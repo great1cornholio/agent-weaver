@@ -22,6 +22,18 @@ defaults:
   workspace: worktree     # worktree | clone | copy
   notifiers: [desktop]    # desktop | slack | discord | webhook | email
 
+# Optional external plugins loaded at startup (Epic 6)
+# Each entry can be a module string or an object with inline config.
+# plugins:
+#   runtime:
+#     - "@acme/ao-plugin-runtime-remote"
+#   notifier:
+#     - module: "@acme/ao-plugin-notifier-teams"
+#       config:
+#         webhook: ${TEAMS_WEBHOOK_URL}
+#   tracker:
+#     - "./dist/plugins/tracker-custom/index.js"
+
 # Projects — at minimum, specify repo and path
 projects:
   my-app:

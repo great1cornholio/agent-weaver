@@ -78,6 +78,12 @@ defaults:
   workspace: worktree
   notifiers: [desktop]
 
+plugins:
+  notifier:
+    - module: "@acme/ao-plugin-notifier-teams"
+      config:
+        channel: eng-alerts
+
 projects:
   my-app:
     repo: owner/my-app
@@ -102,6 +108,7 @@ reactions:
 CI fails → agent gets the logs and fixes it. Reviewer requests changes → agent addresses them. PR approved with green CI → you get a notification to merge.
 
 See [`agent-orchestrator.yaml.example`](agent-orchestrator.yaml.example) for the full reference.
+For custom plugin authoring and loading, see [`docs/PLUGIN_AUTHORING.md`](docs/PLUGIN_AUTHORING.md).
 
 ## CLI
 
@@ -146,6 +153,7 @@ See [CLAUDE.md](CLAUDE.md) for code conventions and architecture details.
 |-----|---------------|
 | [Setup Guide](SETUP.md) | Detailed installation and configuration |
 | [Examples](examples/) | Config templates (GitHub, Linear, multi-project, auto-merge) |
+| [Plugin Authoring](docs/PLUGIN_AUTHORING.md) | How to build and load custom plugins |
 | [CLAUDE.md](CLAUDE.md) | Architecture, conventions, plugin pattern |
 | [Troubleshooting](TROUBLESHOOTING.md) | Common issues and fixes |
 
