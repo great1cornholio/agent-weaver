@@ -821,6 +821,9 @@ export interface OrchestratorConfig {
   /** Optional scheduler tuning for queue behavior and retries (Epic 5) */
   concurrency?: ConcurrencyConfig;
 
+  /** Optional externally configured plugins grouped by slot (Epic 6) */
+  plugins?: Partial<Record<PluginSlot, PluginConfigEntry[]>>;
+
   /** Project configurations */
   projects: Record<string, ProjectConfig>;
 
@@ -959,6 +962,13 @@ export interface AgentSpecificConfig {
   model?: string;
   [key: string]: unknown;
 }
+
+export type PluginConfigEntry =
+  | string
+  | {
+      module: string;
+      config?: Record<string, unknown>;
+    };
 
 // =============================================================================
 // PLUGIN SYSTEM

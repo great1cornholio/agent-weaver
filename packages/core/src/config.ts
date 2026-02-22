@@ -123,6 +123,26 @@ const ConcurrencyConfigSchema = z.object({
   retryBackoff: z.number().int().positive().default(30),
 });
 
+const PluginConfigEntrySchema = z.union([
+  z.string(),
+  z.object({
+    module: z.string(),
+    config: z.record(z.unknown()).optional(),
+  }),
+]);
+
+const PluginOverridesSchema = z
+  .object({
+    runtime: z.array(PluginConfigEntrySchema).optional(),
+    agent: z.array(PluginConfigEntrySchema).optional(),
+    workspace: z.array(PluginConfigEntrySchema).optional(),
+    tracker: z.array(PluginConfigEntrySchema).optional(),
+    scm: z.array(PluginConfigEntrySchema).optional(),
+    notifier: z.array(PluginConfigEntrySchema).optional(),
+    terminal: z.array(PluginConfigEntrySchema).optional(),
+  })
+  .default({});
+
 const OrchestratorConfigSchema = z.object({
   port: z.number().default(3000),
   terminalPort: z.number().optional(),
@@ -130,6 +150,7 @@ const OrchestratorConfigSchema = z.object({
   readyThresholdMs: z.number().nonnegative().default(300_000),
   defaults: DefaultPluginsSchema.default({}),
   concurrency: ConcurrencyConfigSchema.default({}),
+  plugins: PluginOverridesSchema.optional(),
   hosts: z.record(HostConfigSchema).optional(),
   agentTypes: z.record(AgentTypeConfigSchema).optional(),
   projects: z.record(ProjectConfigSchema),

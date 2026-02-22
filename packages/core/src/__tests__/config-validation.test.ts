@@ -655,3 +655,56 @@ describe("Epic 5 concurrency config", () => {
     expect(() => validateConfig(config)).toThrow();
   });
 });
+
+describe("Epic 6 plugins config", () => {
+  it("accepts plugin declarations as strings and object entries", () => {
+    const config = {
+      plugins: {
+        runtime: ["custom-runtime-plugin"],
+        notifier: [
+          {
+            module: "custom-notifier-plugin",
+            config: {
+              endpoint: "https://example.test/webhook",
+            },
+          },
+        ],
+      },
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    const validated = validateConfig(config);
+    expect(validated.plugins?.runtime?.[0]).toBe("custom-runtime-plugin");
+    expect(
+      typeof validated.plugins?.notifier?.[0] === "object" &&
+        (validated.plugins?.notifier?.[0] as { module?: string }).module,
+    ).toBe("custom-notifier-plugin");
+  });
+
+  it("rejects plugin object entry when module is missing", () => {
+    const config = {
+      plugins: {
+        runtime: [
+          {
+            config: { any: true },
+          },
+        ],
+      },
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    expect(() => validateConfig(config)).toThrow();
+  });
+});

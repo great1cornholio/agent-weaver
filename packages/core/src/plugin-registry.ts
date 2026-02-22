@@ -8,6 +8,7 @@
  */
 
 import type {
+  PluginConfigEntry,
   PluginSlot,
   PluginManifest,
   PluginModule,
@@ -64,6 +65,36 @@ function extractPluginConfig(
   return undefined;
 }
 
+function normalizePluginModule(mod: unknown): PluginModule | null {
+  if (!mod || typeof mod !== "object") {
+    return null;
+  }
+
+  const candidate = mod as Partial<PluginModule> & { default?: Partial<PluginModule> };
+  const direct = candidate.manifest && typeof candidate.create === "function" ? candidate : null;
+  if (direct) {
+    return direct as PluginModule;
+  }
+
+  const fallback = candidate.default;
+  if (fallback?.manifest && typeof fallback.create === "function") {
+    return fallback as PluginModule;
+  }
+
+  return null;
+}
+
+function parsePluginEntry(entry: PluginConfigEntry): { moduleName: string; config?: Record<string, unknown> } {
+  if (typeof entry === "string") {
+    return { moduleName: entry };
+  }
+
+  return {
+    moduleName: entry.module,
+    config: entry.config,
+  };
+}
+
 export function createPluginRegistry(): PluginRegistry {
   const plugins: PluginMap = new Map();
 
@@ -97,8 +128,9 @@ export function createPluginRegistry(): PluginRegistry {
       const doImport = importFn ?? ((pkg: string) => import(pkg));
       for (const builtin of BUILTIN_PLUGINS) {
         try {
-          const mod = (await doImport(builtin.pkg)) as PluginModule;
-          if (mod.manifest && typeof mod.create === "function") {
+          const imported = await doImport(builtin.pkg);
+          const mod = normalizePluginModule(imported);
+          if (mod) {
             const pluginConfig = orchestratorConfig
               ? extractPluginConfig(builtin.slot, builtin.name, orchestratorConfig)
               : undefined;
@@ -117,8 +149,33 @@ export function createPluginRegistry(): PluginRegistry {
       // Load built-ins with orchestrator config so plugins receive their settings
       await this.loadBuiltins(config, importFn);
 
-      // Then, load any additional plugins specified in project configs
-      // (future: support npm package names and local file paths)
+      const configuredPlugins = config.plugins;
+      if (!configuredPlugins) {
+        return;
+      }
+
+      const doImport = importFn ?? ((pkg: string) => import(pkg));
+      for (const [slot, entries] of Object.entries(configuredPlugins) as Array<
+        [PluginSlot, PluginConfigEntry[] | undefined]
+      >) {
+        if (!entries || entries.length === 0) {
+          continue;
+        }
+
+        for (const entry of entries) {
+          const { moduleName, config: pluginConfig } = parsePluginEntry(entry);
+          try {
+            const imported = await doImport(moduleName);
+            const mod = normalizePluginModule(imported);
+            if (!mod || mod.manifest.slot !== slot) {
+              continue;
+            }
+            this.register(mod, pluginConfig);
+          } catch {
+            // Optional external plugin failed to load — continue startup
+          }
+        }
+      }
     },
   };
 }
