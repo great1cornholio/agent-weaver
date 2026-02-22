@@ -5,6 +5,7 @@ import { loadConfig, type OrchestratorConfig } from "@composio/ao-core";
 import { exec } from "../lib/shell.js";
 import { banner } from "../lib/format.js";
 import { getSessionManager } from "../lib/create-session-manager.js";
+import { formatPreflightReport, runSpawnPreflight } from "../lib/preflight.js";
 
 async function spawnSession(
   config: OrchestratorConfig,
@@ -58,7 +59,13 @@ export function registerSpawn(program: Command): void {
     .argument("<project>", "Project ID from config")
     .argument("[issue]", "Issue identifier (e.g. INT-1234, #42) - must exist in tracker")
     .option("--open", "Open session in terminal tab")
-    .action(async (projectId: string, issueId: string | undefined, opts: { open?: boolean }) => {
+    .option("--no-preflight", "Skip spawn preflight checks (project/env/binaries)")
+    .action(
+      async (
+        projectId: string,
+        issueId: string | undefined,
+        opts: { open?: boolean; preflight?: boolean },
+      ) => {
       const config = loadConfig();
       if (!config.projects[projectId]) {
         console.error(
@@ -70,12 +77,26 @@ export function registerSpawn(program: Command): void {
       }
 
       try {
+        if (opts.preflight !== false) {
+          const preflight = await runSpawnPreflight(config, projectId, {
+            issueProvided: Boolean(issueId),
+          });
+          if (!preflight.ok) {
+            throw new Error(formatPreflightReport(preflight));
+          }
+          if (preflight.messages.length > 0) {
+            console.log(chalk.yellow(formatPreflightReport(preflight)));
+            console.log();
+          }
+        }
+
         await spawnSession(config, projectId, issueId, opts.open);
       } catch (err) {
         console.error(chalk.red(`✗ ${err}`));
         process.exit(1);
       }
-    });
+      },
+    );
 }
 
 export function registerBatchSpawn(program: Command): void {
@@ -85,7 +106,8 @@ export function registerBatchSpawn(program: Command): void {
     .argument("<project>", "Project ID from config")
     .argument("<issues...>", "Issue identifiers")
     .option("--open", "Open sessions in terminal tabs")
-    .action(async (projectId: string, issues: string[], opts: { open?: boolean }) => {
+    .option("--no-preflight", "Skip spawn preflight checks (project/env/binaries)")
+    .action(async (projectId: string, issues: string[], opts: { open?: boolean; preflight?: boolean }) => {
       const config = loadConfig();
       if (!config.projects[projectId]) {
         console.error(
@@ -101,6 +123,20 @@ export function registerBatchSpawn(program: Command): void {
       console.log(`  Project: ${chalk.bold(projectId)}`);
       console.log(`  Issues:  ${issues.join(", ")}`);
       console.log();
+
+      if (opts.preflight !== false) {
+        const preflight = await runSpawnPreflight(config, projectId, {
+          issueProvided: issues.length > 0,
+        });
+        if (!preflight.ok) {
+          console.error(chalk.red(formatPreflightReport(preflight)));
+          process.exit(1);
+        }
+        if (preflight.messages.length > 0) {
+          console.log(chalk.yellow(formatPreflightReport(preflight)));
+          console.log();
+        }
+      }
 
       const sm = await getSessionManager(config);
       const created: Array<{ session: string; issue: string }> = [];

@@ -59,3 +59,55 @@ npx node-gyp rebuild
 ```bash
 ln -s /path/to/agent-orchestrator.yaml packages/web/agent-orchestrator.yaml
 ```
+
+### `pnpm exec ao` not found
+
+**Symptom**: `pnpm exec ao --help` returns `Command "ao" not found`.
+
+**Fix**: Use the repository wrapper script (works deterministically in this workspace):
+
+```bash
+pnpm build
+pnpm run ao -- --help
+```
+
+Alternative direct invocation:
+
+```bash
+node packages/cli/dist/index.js --help
+```
+
+### `ao spawn` fails immediately with preflight errors
+
+Epic 4 adds fail-fast preflight checks before session creation.
+
+Common examples:
+
+- `binary.tmux` → install `tmux` and ensure it's on `PATH`.
+- `binary.gh` / `binary.glab` → install GitHub/GitLab CLI.
+- `tracker.linear.auth` → set `LINEAR_API_KEY` or `COMPOSIO_API_KEY`.
+
+If you need to bypass checks only for diagnostics:
+
+```bash
+pnpm run ao -- spawn <project> [issue] --no-preflight
+```
+
+### Spawn preflight quick matrix
+
+| Symptom | Probable Cause | Fix |
+| --- | --- | --- |
+| `Unknown project: <id>` | Wrong project key in config | `pnpm run ao -- status` and use key from `agent-orchestrator.yaml` |
+| `binary.tmux` | tmux missing | Install tmux (`sudo apt install tmux` / `brew install tmux`) |
+| `binary.gh` / `binary.glab` | CLI missing for selected tracker/SCM | Install `gh` or `glab` and relaunch terminal |
+| `tracker.linear.auth` | Missing Linear auth | `export LINEAR_API_KEY=...` (or `COMPOSIO_API_KEY`) |
+
+### Smoke verification (single command)
+
+Run:
+
+```bash
+pnpm run ao:smoke -- <project-id> [issue-id]
+```
+
+This command builds CLI, runs spawn, and validates required pipeline events in `ao-events.jsonl`.

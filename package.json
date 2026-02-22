@@ -10,6 +10,9 @@
   "packageManager": "pnpm@9.15.4",
   "type": "module",
   "scripts": {
+    "ao": "node packages/cli/dist/index.js",
+    "ao:help": "node packages/cli/dist/index.js --help",
+    "ao:smoke": "bash scripts/ao-smoke",
     "build": "pnpm -r build",
     "dev": "pnpm --filter @composio/ao-web dev",
     "lint": "eslint .",

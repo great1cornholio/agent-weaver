@@ -4,9 +4,17 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { type Session, type SessionManager, getProjectBaseDir } from "@composio/ao-core";
 
-const { mockExec, mockConfigRef, mockSessionManager } = vi.hoisted(() => ({
+const {
+  mockExec,
+  mockConfigRef,
+  mockRunSpawnPreflight,
+  mockFormatPreflightReport,
+  mockSessionManager,
+} = vi.hoisted(() => ({
   mockExec: vi.fn(),
   mockConfigRef: { current: null as Record<string, unknown> | null },
+  mockRunSpawnPreflight: vi.fn().mockResolvedValue({ ok: true, messages: [] }),
+  mockFormatPreflightReport: vi.fn().mockReturnValue("Spawn preflight checks:\n- ✗ missing"),
   mockSessionManager: {
     list: vi.fn(),
     kill: vi.fn(),
@@ -49,6 +57,11 @@ vi.mock("@composio/ao-core", async (importOriginal) => {
 
 vi.mock("../../src/lib/create-session-manager.js", () => ({
   getSessionManager: async (): Promise<SessionManager> => mockSessionManager as SessionManager,
+}));
+
+vi.mock("../../src/lib/preflight.js", () => ({
+  runSpawnPreflight: mockRunSpawnPreflight,
+  formatPreflightReport: mockFormatPreflightReport,
 }));
 
 vi.mock("../../src/lib/metadata.js", () => ({
@@ -106,6 +119,10 @@ beforeEach(() => {
 
   mockSessionManager.spawn.mockReset();
   mockExec.mockReset();
+  mockRunSpawnPreflight.mockReset();
+  mockRunSpawnPreflight.mockResolvedValue({ ok: true, messages: [] });
+  mockFormatPreflightReport.mockReset();
+  mockFormatPreflightReport.mockReturnValue("Spawn preflight checks:\n- ✗ missing");
 });
 
 afterEach(() => {
@@ -147,6 +164,11 @@ describe("spawn command", () => {
       projectId: "my-app",
       issueId: "INT-100",
     });
+    expect(mockRunSpawnPreflight).toHaveBeenCalledWith(
+      expect.any(Object),
+      "my-app",
+      { issueProvided: true },
+    );
 
     const output = consoleSpy.mock.calls.map((c) => String(c[0])).join("\n");
     expect(output).toContain("app-7");
@@ -246,5 +268,43 @@ describe("spawn command", () => {
     await expect(
       program.parseAsync(["node", "test", "spawn", "my-app"]),
     ).rejects.toThrow("process.exit(1)");
+  });
+
+  it("fails fast when preflight returns errors", async () => {
+    mockRunSpawnPreflight.mockResolvedValue({
+      ok: false,
+      messages: [{ severity: "error", check: "tracker.linear.auth", message: "missing" }],
+    });
+
+    await expect(program.parseAsync(["node", "test", "spawn", "my-app", "INT-1"])).rejects.toThrow(
+      "process.exit(1)",
+    );
+
+    expect(mockSessionManager.spawn).not.toHaveBeenCalled();
+    expect(mockFormatPreflightReport).toHaveBeenCalled();
+  });
+
+  it("skips preflight checks with --no-preflight", async () => {
+    const fakeSession: Session = {
+      id: "app-2",
+      projectId: "my-app",
+      status: "spawning",
+      activity: null,
+      branch: null,
+      issueId: null,
+      pr: null,
+      workspacePath: "/tmp/wt",
+      runtimeHandle: { id: "hash-app-2", runtimeName: "tmux", data: {} },
+      agentInfo: null,
+      createdAt: new Date(),
+      lastActivityAt: new Date(),
+      metadata: {},
+    };
+    mockSessionManager.spawn.mockResolvedValue(fakeSession);
+
+    await program.parseAsync(["node", "test", "spawn", "my-app", "--no-preflight"]);
+
+    expect(mockRunSpawnPreflight).not.toHaveBeenCalled();
+    expect(mockSessionManager.spawn).toHaveBeenCalledWith({ projectId: "my-app", issueId: undefined });
   });
 });
