@@ -107,3 +107,13 @@ export type { PipelineCheckpoint, SubtaskCheckpointResult } from "./pipeline-che
 // Test command resolution (Epic 3)
 export { resolveTestCommand } from "./test-command.js";
 export type { ResolvedTestCommand, TestCommandSource } from "./test-command.js";
+
+// VRAM scheduler primitives (Epic 5)
+export { VramScheduler } from "./vram-scheduler.js";
+export type {
+  SchedulerTask,
+  SchedulerDecision,
+  SchedulerNoSlots,
+  SchedulerState,
+  VramSchedulerOptions,
+} from "./vram-scheduler.js";

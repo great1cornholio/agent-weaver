@@ -117,12 +117,19 @@ const DefaultPluginsSchema = z.object({
   notifiers: z.array(z.string()).default(["composio", "desktop"]),
 });
 
+const ConcurrencyConfigSchema = z.object({
+  queueLookahead: z.number().int().nonnegative().default(5),
+  maxSkipsPerTask: z.number().int().positive().default(2),
+  retryBackoff: z.number().int().positive().default(30),
+});
+
 const OrchestratorConfigSchema = z.object({
   port: z.number().default(3000),
   terminalPort: z.number().optional(),
   directTerminalPort: z.number().optional(),
   readyThresholdMs: z.number().nonnegative().default(300_000),
   defaults: DefaultPluginsSchema.default({}),
+  concurrency: ConcurrencyConfigSchema.default({}),
   hosts: z.record(HostConfigSchema).optional(),
   agentTypes: z.record(AgentTypeConfigSchema).optional(),
   projects: z.record(ProjectConfigSchema),

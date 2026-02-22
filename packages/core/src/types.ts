@@ -818,6 +818,9 @@ export interface OrchestratorConfig {
   /** Optional agent type to model mapping for scheduler constraints (Epic 3) */
   agentTypes?: Record<string, AgentTypeConfig>;
 
+  /** Optional scheduler tuning for queue behavior and retries (Epic 5) */
+  concurrency?: ConcurrencyConfig;
+
   /** Project configurations */
   projects: Record<string, ProjectConfig>;
 
@@ -860,6 +863,17 @@ export interface HostConfig {
 export interface AgentTypeConfig {
   model: string;
   maxConcurrentPerHost?: number;
+}
+
+export interface ConcurrencyConfig {
+  /** Number of queue positions ahead of the head task considered for scheduling */
+  queueLookahead: number;
+
+  /** Maximum times a task can be skipped before receiving absolute priority */
+  maxSkipsPerTask: number;
+
+  /** Default retry-after in seconds when no slots are available */
+  retryBackoff: number;
 }
 
 export interface ProjectConfig {

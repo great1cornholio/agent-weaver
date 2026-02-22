@@ -595,3 +595,63 @@ describe("Epic 3 VRAM host budget validation", () => {
     expect(() => validateConfig(config)).not.toThrow();
   });
 });
+
+describe("Epic 5 concurrency config", () => {
+  it("applies default concurrency values when not specified", () => {
+    const config = {
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    const validated = validateConfig(config);
+    expect(validated.concurrency.queueLookahead).toBe(5);
+    expect(validated.concurrency.maxSkipsPerTask).toBe(2);
+    expect(validated.concurrency.retryBackoff).toBe(30);
+  });
+
+  it("accepts custom concurrency values", () => {
+    const config = {
+      concurrency: {
+        queueLookahead: 3,
+        maxSkipsPerTask: 4,
+        retryBackoff: 15,
+      },
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    const validated = validateConfig(config);
+    expect(validated.concurrency.queueLookahead).toBe(3);
+    expect(validated.concurrency.maxSkipsPerTask).toBe(4);
+    expect(validated.concurrency.retryBackoff).toBe(15);
+  });
+
+  it("rejects invalid concurrency values", () => {
+    const config = {
+      concurrency: {
+        queueLookahead: -1,
+        maxSkipsPerTask: 0,
+        retryBackoff: 0,
+      },
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    expect(() => validateConfig(config)).toThrow();
+  });
+});
