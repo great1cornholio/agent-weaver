@@ -96,6 +96,8 @@ export type {
   TddMode,
   TddGuardResult,
   PipelineTddGuard,
+  PipelineCheckpointState,
+  PipelineCheckpointStore,
   TaskPipelineManagerOptions,
   PipelineExecutionResult,
 } from "./pipeline-manager.js";

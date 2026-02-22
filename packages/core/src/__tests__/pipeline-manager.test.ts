@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { TaskPipelineManager, type PipelineTddGuard, type TddGuardResult } from "../pipeline-manager.js";
+import {
+  TaskPipelineManager,
+  type PipelineCheckpointStore,
+  type PipelineTddGuard,
+  type TddGuardResult,
+} from "../pipeline-manager.js";
+import { hashSubtaskPlan } from "../pipeline-checkpoint.js";
 import type { SubtaskPlan } from "../pipeline-plan.js";
 
 function createGuard(red: TddGuardResult[], green: TddGuardResult[]): PipelineTddGuard {
@@ -13,6 +19,22 @@ function createGuard(red: TddGuardResult[], green: TddGuardResult[]): PipelineTd
 }
 
 describe("TaskPipelineManager", () => {
+  function createCheckpointStore(initial: ReturnType<PipelineCheckpointStore["load"]> = null) {
+    let checkpoint = initial;
+    return {
+      store: {
+        load: vi.fn(() => checkpoint),
+        save: vi.fn((next) => {
+          checkpoint = next;
+        }),
+        clear: vi.fn(() => {
+          checkpoint = null;
+        }),
+      } satisfies PipelineCheckpointStore,
+      get: () => checkpoint,
+    };
+  }
+
   it("executes layers and enforces red+green guards in strict mode", async () => {
     const plan: SubtaskPlan = {
       strategy: "tdd",
@@ -179,5 +201,121 @@ describe("TaskPipelineManager", () => {
     expect(result.tddResults).toHaveLength(0);
     expect(guard.assertRed).toHaveBeenCalledTimes(0);
     expect(guard.assertGreen).toHaveBeenCalledTimes(0);
+  });
+
+  it("saves checkpoint per layer and clears on success", async () => {
+    const plan: SubtaskPlan = {
+      strategy: "tdd",
+      subtasks: [
+        { id: "subtask-0", agentType: "tester", description: "tests" },
+        {
+          id: "subtask-1",
+          agentType: "developer",
+          description: "impl",
+          dependsOn: ["subtask-0"],
+        },
+      ],
+    };
+
+    const runSubtask = vi.fn(async () => {});
+    const guard = createGuard(
+      [{ phase: "red", passed: true, testExit: 1, output: "red ok" }],
+      [{ phase: "green", passed: true, testExit: 0, output: "green ok" }],
+    );
+    const checkpoint = createCheckpointStore();
+
+    const manager = new TaskPipelineManager({
+      runSubtask,
+      guard,
+      tddMode: "strict",
+      checkpointStore: checkpoint.store,
+    });
+
+    await manager.executePlan(plan);
+
+    expect(checkpoint.store.save).toHaveBeenCalledTimes(2);
+    expect(checkpoint.store.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes from checkpoint when plan hash matches", async () => {
+    const plan: SubtaskPlan = {
+      strategy: "tdd",
+      subtasks: [
+        { id: "subtask-0", agentType: "tester", description: "tests" },
+        {
+          id: "subtask-1",
+          agentType: "developer",
+          description: "impl",
+          dependsOn: ["subtask-0"],
+        },
+      ],
+    };
+
+    const runSubtask = vi.fn(async () => {});
+    const guard = createGuard([], [{ phase: "green", passed: true, testExit: 0, output: "green ok" }]);
+    const checkpoint = createCheckpointStore({
+      sessionId: "pipeline-session",
+      planHash: hashSubtaskPlan(plan),
+      completedLayers: [0],
+      currentLayer: 1,
+      subtaskResults: {},
+      tddResults: [{ phase: "red", passed: true, testExit: 1, output: "red ok" }],
+      lastUpdated: new Date().toISOString(),
+    });
+
+    const manager = new TaskPipelineManager({
+      runSubtask,
+      guard,
+      tddMode: "strict",
+      checkpointStore: checkpoint.store,
+    });
+
+    const result = await manager.executePlan(plan);
+
+    expect(result.resumedFromLayer).toBe(1);
+    expect(result.tddResults).toHaveLength(2);
+    expect(runSubtask).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores checkpoint when plan hash does not match", async () => {
+    const plan: SubtaskPlan = {
+      strategy: "tdd",
+      subtasks: [
+        { id: "subtask-0", agentType: "tester", description: "tests" },
+        {
+          id: "subtask-1",
+          agentType: "developer",
+          description: "impl",
+          dependsOn: ["subtask-0"],
+        },
+      ],
+    };
+
+    const runSubtask = vi.fn(async () => {});
+    const guard = createGuard(
+      [{ phase: "red", passed: true, testExit: 1, output: "red ok" }],
+      [{ phase: "green", passed: true, testExit: 0, output: "green ok" }],
+    );
+    const checkpoint = createCheckpointStore({
+      sessionId: "pipeline-session",
+      planHash: "different-hash",
+      completedLayers: [0],
+      currentLayer: 1,
+      subtaskResults: {},
+      tddResults: [],
+      lastUpdated: new Date().toISOString(),
+    });
+
+    const manager = new TaskPipelineManager({
+      runSubtask,
+      guard,
+      tddMode: "strict",
+      checkpointStore: checkpoint.store,
+    });
+
+    const result = await manager.executePlan(plan);
+
+    expect(result.resumedFromLayer).toBe(0);
+    expect(runSubtask).toHaveBeenCalledTimes(2);
   });
 });
