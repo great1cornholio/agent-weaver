@@ -16,6 +16,25 @@ import type {
   OrchestratorConfig,
 } from "./types.js";
 
+export type PluginRegistryWarningCode =
+  | "builtin-import-failed"
+  | "builtin-invalid-module"
+  | "configured-import-failed"
+  | "configured-invalid-module"
+  | "configured-slot-mismatch";
+
+export interface PluginRegistryWarning {
+  code: PluginRegistryWarningCode;
+  slot: PluginSlot;
+  moduleName: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+export interface PluginRegistryOptions {
+  onWarning?: (warning: PluginRegistryWarning) => void;
+}
+
 /** Map from "slot:name" → plugin instance */
 type PluginMap = Map<string, { manifest: PluginManifest; instance: unknown }>;
 
@@ -95,8 +114,13 @@ function parsePluginEntry(entry: PluginConfigEntry): { moduleName: string; confi
   };
 }
 
-export function createPluginRegistry(): PluginRegistry {
+export function createPluginRegistry(options?: PluginRegistryOptions): PluginRegistry {
   const plugins: PluginMap = new Map();
+  const onWarning = options?.onWarning;
+
+  const emitWarning = (warning: PluginRegistryWarning): void => {
+    onWarning?.(warning);
+  };
 
   return {
     register(plugin: PluginModule, config?: Record<string, unknown>): void {
@@ -130,13 +154,28 @@ export function createPluginRegistry(): PluginRegistry {
         try {
           const imported = await doImport(builtin.pkg);
           const mod = normalizePluginModule(imported);
-          if (mod) {
-            const pluginConfig = orchestratorConfig
-              ? extractPluginConfig(builtin.slot, builtin.name, orchestratorConfig)
-              : undefined;
-            this.register(mod, pluginConfig);
+          if (!mod) {
+            emitWarning({
+              code: "builtin-invalid-module",
+              slot: builtin.slot,
+              moduleName: builtin.pkg,
+              message: `Built-in plugin module does not export a valid PluginModule: ${builtin.pkg}`,
+            });
+            continue;
           }
-        } catch {
+
+          const pluginConfig = orchestratorConfig
+            ? extractPluginConfig(builtin.slot, builtin.name, orchestratorConfig)
+            : undefined;
+          this.register(mod, pluginConfig);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          emitWarning({
+            code: "builtin-import-failed",
+            slot: builtin.slot,
+            moduleName: builtin.pkg,
+            message: `Failed to import built-in plugin module: ${builtin.pkg} (${message})`,
+          });
           // Plugin not installed — that's fine, only load what's available
         }
       }
@@ -167,11 +206,40 @@ export function createPluginRegistry(): PluginRegistry {
           try {
             const imported = await doImport(moduleName);
             const mod = normalizePluginModule(imported);
-            if (!mod || mod.manifest.slot !== slot) {
+            if (!mod) {
+              emitWarning({
+                code: "configured-invalid-module",
+                slot,
+                moduleName,
+                message: `Configured plugin module does not export a valid PluginModule: ${moduleName}`,
+              });
+              continue;
+            }
+
+            if (mod.manifest.slot !== slot) {
+              emitWarning({
+                code: "configured-slot-mismatch",
+                slot,
+                moduleName,
+                message:
+                  `Configured plugin slot mismatch for module ${moduleName}: ` +
+                  `declared=${slot}, manifest=${mod.manifest.slot}`,
+                details: {
+                  declaredSlot: slot,
+                  manifestSlot: mod.manifest.slot,
+                },
+              });
               continue;
             }
             this.register(mod, pluginConfig);
-          } catch {
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            emitWarning({
+              code: "configured-import-failed",
+              slot,
+              moduleName,
+              message: `Failed to import configured plugin module: ${moduleName} (${message})`,
+            });
             // Optional external plugin failed to load — continue startup
           }
         }

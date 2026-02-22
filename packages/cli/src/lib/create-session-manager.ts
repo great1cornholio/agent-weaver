@@ -25,7 +25,13 @@ let registryPromise: Promise<PluginRegistry> | null = null;
 async function getRegistry(config: OrchestratorConfig): Promise<PluginRegistry> {
   if (!registryPromise) {
     registryPromise = (async () => {
-      const registry = createPluginRegistry();
+      const registry = createPluginRegistry({
+        onWarning: (warning) => {
+          console.warn(
+            `[ao][plugin-registry] ${warning.code} slot=${warning.slot} module=${warning.moduleName} ${warning.message}`,
+          );
+        },
+      });
       // Pass CLI's import context so pnpm strict resolution can find plugin packages.
       // Core can't resolve @composio/ao-plugin-* from its own module context because
       // they aren't in core's dependencies. The CLI has them as workspace deps.

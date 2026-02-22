@@ -140,6 +140,24 @@ describe("loadBuiltins", () => {
     // In the test environment, most are not resolvable — should not throw.
     await expect(registry.loadBuiltins()).resolves.toBeUndefined();
   });
+
+  it("emits warning when built-in plugin import fails", async () => {
+    const warnings: Array<{ code: string; moduleName: string }> = [];
+    const registry = createPluginRegistry({
+      onWarning: (warning) => {
+        warnings.push({ code: warning.code, moduleName: warning.moduleName });
+      },
+    });
+
+    const importFn = vi.fn(async (_pkg: string) => {
+      throw new Error("missing");
+    });
+
+    await registry.loadBuiltins(undefined, importFn);
+
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings.some((warning) => warning.code === "builtin-import-failed")).toBe(true);
+  });
 });
 
 describe("extractPluginConfig (via register with config)", () => {
@@ -258,5 +276,78 @@ describe("loadFromConfig", () => {
     await registry.loadFromConfig(config, importFn);
     expect(registry.get("runtime", "slot-mismatch")).toBeNull();
     expect(registry.get("notifier", "slot-mismatch")).toBeNull();
+  });
+
+  it("emits warning when configured plugin slot does not match manifest", async () => {
+    const warnings: Array<{ code: string; moduleName: string; slot: string }> = [];
+    const registry = createPluginRegistry({
+      onWarning: (warning) => {
+        warnings.push({
+          code: warning.code,
+          moduleName: warning.moduleName,
+          slot: warning.slot,
+        });
+      },
+    });
+
+    const wrongSlotPlugin = makePlugin("notifier", "slot-mismatch");
+    const importFn = vi.fn(async (pkg: string) => {
+      if (pkg === "mismatch-plugin") {
+        return wrongSlotPlugin;
+      }
+      throw new Error("not found");
+    });
+
+    const config = makeOrchestratorConfig({
+      plugins: {
+        runtime: ["mismatch-plugin"],
+      },
+    });
+
+    await registry.loadFromConfig(config, importFn);
+    expect(
+      warnings.some(
+        (warning) =>
+          warning.code === "configured-slot-mismatch" &&
+          warning.moduleName === "mismatch-plugin" &&
+          warning.slot === "runtime",
+      ),
+    ).toBe(true);
+  });
+
+  it("emits warning when configured plugin import fails", async () => {
+    const warnings: Array<{ code: string; moduleName: string; slot: string }> = [];
+    const registry = createPluginRegistry({
+      onWarning: (warning) => {
+        warnings.push({
+          code: warning.code,
+          moduleName: warning.moduleName,
+          slot: warning.slot,
+        });
+      },
+    });
+
+    const importFn = vi.fn(async (pkg: string) => {
+      if (pkg === "broken-plugin") {
+        throw new Error("boom");
+      }
+      throw new Error("not found");
+    });
+
+    const config = makeOrchestratorConfig({
+      plugins: {
+        tracker: ["broken-plugin"],
+      },
+    });
+
+    await registry.loadFromConfig(config, importFn);
+    expect(
+      warnings.some(
+        (warning) =>
+          warning.code === "configured-import-failed" &&
+          warning.moduleName === "broken-plugin" &&
+          warning.slot === "tracker",
+      ),
+    ).toBe(true);
   });
 });
