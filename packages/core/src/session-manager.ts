@@ -629,6 +629,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         const pipeline = new TaskPipelineManager({
           sessionId,
           tddMode: project.tddMode ?? "strict",
+          subtaskRetries: 1,
+          subtaskRetryBackoffMs: 250,
           guard,
           checkpointStore,
           runSubtask: async (subtask) => {
@@ -640,6 +642,20 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
                 subtaskId: subtask.id,
                 agentType: subtask.agentType,
                 description: subtask.description,
+              },
+            });
+          },
+          onSubtaskRetry: (subtask, attempt, error, nextDelayMs) => {
+            appendStructuredEvent(config.configPath, project.path, {
+              type: "pipeline.subtask.retry",
+              sessionId,
+              projectId: spawnConfig.projectId,
+              data: {
+                subtaskId: subtask.id,
+                agentType: subtask.agentType,
+                attempt,
+                nextDelayMs,
+                error: String(error),
               },
             });
           },

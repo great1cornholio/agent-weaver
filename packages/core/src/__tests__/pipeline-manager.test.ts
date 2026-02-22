@@ -318,4 +318,54 @@ describe("TaskPipelineManager", () => {
     expect(result.resumedFromLayer).toBe(0);
     expect(runSubtask).toHaveBeenCalledTimes(2);
   });
+
+  it("retries subtask and succeeds when a later attempt passes", async () => {
+    const plan: SubtaskPlan = {
+      strategy: "refactor",
+      subtasks: [{ id: "subtask-0", agentType: "reviewer", description: "review" }],
+    };
+
+    const runSubtask = vi
+      .fn<(_: { id: string }) => Promise<void>>()
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValue(undefined);
+    const guard = createGuard([], []);
+    const onSubtaskRetry = vi.fn();
+
+    const manager = new TaskPipelineManager({
+      runSubtask,
+      guard,
+      tddMode: "off",
+      subtaskRetries: 1,
+      subtaskRetryBackoffMs: 0,
+      onSubtaskRetry,
+    });
+
+    await expect(manager.executePlan(plan)).resolves.toMatchObject({ resumedFromLayer: 0 });
+    expect(runSubtask).toHaveBeenCalledTimes(2);
+    expect(onSubtaskRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails pipeline when subtask retries are exhausted", async () => {
+    const plan: SubtaskPlan = {
+      strategy: "refactor",
+      subtasks: [{ id: "subtask-0", agentType: "reviewer", description: "review" }],
+    };
+
+    const runSubtask = vi.fn(async () => {
+      throw new Error("permanent failure");
+    });
+    const guard = createGuard([], []);
+
+    const manager = new TaskPipelineManager({
+      runSubtask,
+      guard,
+      tddMode: "off",
+      subtaskRetries: 1,
+      subtaskRetryBackoffMs: 0,
+    });
+
+    await expect(manager.executePlan(plan)).rejects.toThrow(/permanent failure/i);
+    expect(runSubtask).toHaveBeenCalledTimes(2);
+  });
 });

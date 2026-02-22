@@ -19,10 +19,18 @@ export interface TaskPipelineManagerOptions {
   runSubtask: (subtask: Subtask) => Promise<void>;
   guard: PipelineTddGuard;
   tddMode: TddMode;
+  subtaskRetries?: number;
+  subtaskRetryBackoffMs?: number;
   maxRedRetries?: number;
   maxGreenRetries?: number;
   onLayerStart?: (layerIndex: number, layer: Subtask[]) => void;
   onLayerCompleted?: (layerIndex: number, layer: Subtask[]) => void;
+  onSubtaskRetry?: (
+    subtask: Subtask,
+    attempt: number,
+    error: unknown,
+    nextDelayMs: number,
+  ) => void;
   checkpointStore?: PipelineCheckpointStore;
   sessionId?: string;
 }
@@ -54,8 +62,16 @@ export class TaskPipelineManager {
   private readonly tddMode: TddMode;
   private readonly maxRedRetries: number;
   private readonly maxGreenRetries: number;
+  private readonly subtaskRetries: number;
+  private readonly subtaskRetryBackoffMs: number;
   private readonly onLayerStart?: (layerIndex: number, layer: Subtask[]) => void;
   private readonly onLayerCompleted?: (layerIndex: number, layer: Subtask[]) => void;
+  private readonly onSubtaskRetry?: (
+    subtask: Subtask,
+    attempt: number,
+    error: unknown,
+    nextDelayMs: number,
+  ) => void;
   private readonly checkpointStore?: PipelineCheckpointStore;
   private readonly sessionId: string;
 
@@ -63,10 +79,13 @@ export class TaskPipelineManager {
     this.runSubtask = options.runSubtask;
     this.guard = options.guard;
     this.tddMode = options.tddMode;
+    this.subtaskRetries = options.subtaskRetries ?? 0;
+    this.subtaskRetryBackoffMs = options.subtaskRetryBackoffMs ?? 250;
     this.maxRedRetries = options.maxRedRetries ?? 2;
     this.maxGreenRetries = options.maxGreenRetries ?? 3;
     this.onLayerStart = options.onLayerStart;
     this.onLayerCompleted = options.onLayerCompleted;
+    this.onSubtaskRetry = options.onSubtaskRetry;
     this.checkpointStore = options.checkpointStore;
     this.sessionId = options.sessionId ?? "pipeline-session";
   }
@@ -130,7 +149,7 @@ export class TaskPipelineManager {
         };
 
         try {
-          await this.runSubtask(subtask);
+          await this.runSubtaskWithRetry(subtask);
           subtaskResults[subtask.id] = {
             ...subtaskResults[subtask.id],
             status: "done",
@@ -147,6 +166,33 @@ export class TaskPipelineManager {
         }
       }),
     );
+  }
+
+  private async runSubtaskWithRetry(subtask: Subtask): Promise<void> {
+    let lastError: unknown;
+    const maxAttempts = this.subtaskRetries + 1;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        await this.runSubtask(subtask);
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt >= maxAttempts) {
+          break;
+        }
+
+        const nextDelayMs = this.subtaskRetryBackoffMs * 2 ** (attempt - 1);
+        this.onSubtaskRetry?.(subtask, attempt, error, nextDelayMs);
+        if (nextDelayMs > 0) {
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, nextDelayMs);
+          });
+        }
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
   private requiresRedGuard(currentLayer: Subtask[], nextLayer: Subtask[]): boolean {
