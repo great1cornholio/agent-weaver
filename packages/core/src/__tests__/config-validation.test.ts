@@ -399,3 +399,42 @@ describe("Config Defaults", () => {
     expect(validated.projects.proj1.tracker).toEqual({ plugin: "github" });
   });
 });
+
+describe("Epic 1 alpha config compatibility", () => {
+  it("accepts project configured for GitLab tracker and SCM", () => {
+    const config = {
+      defaults: {
+        runtime: "process",
+        agent: "aider",
+        workspace: "worktree",
+        notifiers: ["telegram"],
+      },
+      projects: {
+        "test-project": {
+          path: "/repos/test-project",
+          repo: "group/test-project",
+          defaultBranch: "main",
+          sessionPrefix: "tst",
+          tracker: { plugin: "gitlab", url: "https://gitlab.example.com" },
+          scm: { plugin: "gitlab", url: "https://gitlab.example.com" },
+          agentConfig: { model: "qwen3-coder-30b", permissions: "skip" },
+        },
+      },
+      notifiers: {
+        telegram: {
+          plugin: "telegram",
+          token: "test-token",
+          chatId: "123456",
+        },
+      },
+      notificationRouting: {
+        urgent: ["telegram"],
+        action: ["telegram"],
+        warning: ["telegram"],
+        info: ["telegram"],
+      },
+    };
+
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+});
