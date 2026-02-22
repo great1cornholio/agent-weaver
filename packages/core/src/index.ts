@@ -83,3 +83,21 @@ export {
 // Structured event logging (Epic 1)
 export { appendStructuredEvent, getEventLogPath } from "./event-log.js";
 export type { StructuredEventLogEntry } from "./event-log.js";
+
+// Epic 2 core pipeline primitives
+export {
+  validateSubtaskPlan,
+  topologicalSortSubtasks,
+  buildExecutionLayers,
+} from "./pipeline-plan.js";
+export type { Subtask, SubtaskPlan, PipelineAgentType } from "./pipeline-plan.js";
+export { TaskPipelineManager } from "./pipeline-manager.js";
+export type {
+  TddMode,
+  TddGuardResult,
+  PipelineTddGuard,
+  TaskPipelineManagerOptions,
+  PipelineExecutionResult,
+} from "./pipeline-manager.js";
+export { PipelineCheckpointManager, hashSubtaskPlan } from "./pipeline-checkpoint.js";
+export type { PipelineCheckpoint, SubtaskCheckpointResult } from "./pipeline-checkpoint.js";

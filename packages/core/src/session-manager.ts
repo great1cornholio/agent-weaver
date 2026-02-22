@@ -531,7 +531,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         data: {
           issueId: spawnConfig.issueId ?? null,
           branch,
-          workflow: "simple",
+          workflow: project.workflow ?? "simple",
         },
       });
     } catch (err) {

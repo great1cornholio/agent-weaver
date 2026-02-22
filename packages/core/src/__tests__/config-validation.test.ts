@@ -438,3 +438,68 @@ describe("Epic 1 alpha config compatibility", () => {
     expect(() => validateConfig(config)).not.toThrow();
   });
 });
+
+describe("Epic 2 project workflow config", () => {
+  it("accepts workflow, tddMode, and testCmd in project config", () => {
+    const config = {
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+          workflow: "full",
+          tddMode: "warn",
+          testCmd: "pnpm test",
+        },
+      },
+    };
+
+    const validated = validateConfig(config);
+    expect(validated.projects.proj1.workflow).toBe("full");
+    expect(validated.projects.proj1.tddMode).toBe("warn");
+    expect(validated.projects.proj1.testCmd).toBe("pnpm test");
+  });
+
+  it("applies defaults for workflow and tddMode", () => {
+    const config = {
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    const validated = validateConfig(config);
+    expect(validated.projects.proj1.workflow).toBe("simple");
+    expect(validated.projects.proj1.tddMode).toBe("strict");
+  });
+
+  it("rejects invalid workflow and tddMode values", () => {
+    const invalidWorkflow = {
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+          workflow: "invalid",
+        },
+      },
+    };
+
+    const invalidTddMode = {
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+          tddMode: "invalid",
+        },
+      },
+    };
+
+    expect(() => validateConfig(invalidWorkflow)).toThrow();
+    expect(() => validateConfig(invalidTddMode)).toThrow();
+  });
+});

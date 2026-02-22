@@ -872,6 +872,15 @@ export interface ProjectConfig {
   /** Agent-specific configuration */
   agentConfig?: AgentSpecificConfig;
 
+  /** Workflow mode for orchestrating task execution */
+  workflow?: "simple" | "full" | "auto";
+
+  /** TDD enforcement mode used by pipeline orchestration */
+  tddMode?: "strict" | "warn" | "off";
+
+  /** Project test command used by TDD checks and agent tooling */
+  testCmd?: string;
+
   /** Per-project reaction overrides */
   reactions?: Record<string, Partial<ReactionConfig>>;
 
