@@ -1,0 +1,68 @@
+name: Epic 5 VRAM Smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/core/**"
+      - "packages/integration-tests/**"
+      - ".github/workflows/epic5-vram-smoke.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/core/**"
+      - "packages/integration-tests/**"
+      - ".github/workflows/epic5-vram-smoke.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vram-smoke:
+    name: Epic5 VRAM waiting smoke (non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build core
+        run: pnpm --filter @composio/ao-core build
+
+      - name: Run Epic 5 smoke test (capture only)
+        id: smoke
+        shell: bash
+        run: |
+          set +e
+          pnpm --filter @composio/ao-integration-tests test:integration:vram
+          EXIT_CODE=$?
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Publish summary
+        if: always()
+        run: |
+          if [[ "${{ steps.smoke.outputs.exit_code }}" != "0" ]]; then
+            echo "::warning::Epic 5 VRAM smoke failed (non-blocking). Check logs for vram.slot.waiting/pipeline.failed path regressions."
+            {
+              echo "## Epic 5 VRAM Smoke"
+              echo "- Result: ❌ failed (non-blocking)"
+              echo "- Command: \\`pnpm --filter @composio/ao-integration-tests test:integration:vram\\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "## Epic 5 VRAM Smoke"
+              echo "- Result: ✅ passed"
+              echo "- Command: \\`pnpm --filter @composio/ao-integration-tests test:integration:vram\\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -7,6 +7,7 @@
   "scripts": {
     "test": "echo 'Skipped — run test:integration instead'",
     "test:integration": "vitest run --config vitest.config.ts",
+    "test:integration:vram": "vitest run --config vitest.config.ts src/epic-05-vram-waiting.integration.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
