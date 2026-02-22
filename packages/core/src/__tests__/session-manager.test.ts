@@ -333,6 +333,35 @@ describe("spawn", () => {
     expect(mockAgent.getLaunchCommand).not.toHaveBeenCalled();
   });
 
+  it("emits pipeline events and clears checkpoint in workflow full", async () => {
+    const fullConfig: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "full",
+        },
+      },
+    };
+
+    const sm = createSessionManager({ config: fullConfig, registry: mockRegistry });
+    const session = await sm.spawn({ projectId: "my-app", issueId: "INT-42" });
+
+    const logPath = getEventLogPath(configPath, join(tmpDir, "my-app"));
+    const rows = readFileSync(logPath, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string });
+
+    expect(rows.some((row) => row.type === "pipeline.layer.started")).toBe(true);
+    expect(rows.some((row) => row.type === "pipeline.layer.completed")).toBe(true);
+    expect(rows.some((row) => row.type === "pipeline.completed")).toBe(true);
+
+    const checkpointPath = join("/tmp/mock-ws/app-1", ".ao", `pipeline-${session.id}.json`);
+    expect(existsSync(checkpointPath)).toBe(false);
+  });
+
   it("throws for unknown project", async () => {
     const sm = createSessionManager({ config, registry: mockRegistry });
     await expect(sm.spawn({ projectId: "nonexistent" })).rejects.toThrow("Unknown project");

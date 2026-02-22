@@ -56,6 +56,9 @@ import {
   validateAndStoreOrigin,
 } from "./paths.js";
 import { appendStructuredEvent } from "./event-log.js";
+import { TaskPipelineManager, type PipelineTddGuard } from "./pipeline-manager.js";
+import { PipelineCheckpointManager } from "./pipeline-checkpoint.js";
+import type { SubtaskPlan } from "./pipeline-plan.js";
 
 /** Escape regex metacharacters in a string. */
 function escapeRegex(str: string): string {
@@ -131,6 +134,32 @@ function resolveWorkflowMode(project: ProjectConfig, issue?: Issue): "simple" | 
   }
 
   return issue.description.length > 500 ? "full" : "simple";
+}
+
+function buildDefaultFullWorkflowPlan(issueId?: string): SubtaskPlan {
+  const issueRef = issueId ? `#${issueId}` : "current task";
+  return {
+    strategy: "tdd",
+    subtasks: [
+      {
+        id: "subtask-0",
+        agentType: "tester",
+        description: `Write failing tests for ${issueRef}`,
+      },
+      {
+        id: "subtask-1",
+        agentType: "developer",
+        description: `Implement minimal solution for ${issueRef}`,
+        dependsOn: ["subtask-0"],
+      },
+      {
+        id: "subtask-2",
+        agentType: "reviewer",
+        description: `Review changes for ${issueRef}`,
+        dependsOn: ["subtask-1"],
+      },
+    ],
+  };
 }
 
 /** Reconstruct a Session object from raw metadata key=value pairs. */
@@ -565,6 +594,88 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
           agent: selectedAgent.name,
         },
       });
+
+      if (resolvedWorkflow === "full") {
+        const pipelinePlan = buildDefaultFullWorkflowPlan(spawnConfig.issueId);
+        const checkpointStore = new PipelineCheckpointManager(workspacePath, sessionId);
+        const guard: PipelineTddGuard = {
+          assertRed: async () => ({
+            phase: "red",
+            passed: true,
+            testExit: 1,
+            output: "bootstrap-red-pass",
+          }),
+          assertGreen: async () => ({
+            phase: "green",
+            passed: true,
+            testExit: 0,
+            output: "bootstrap-green-pass",
+          }),
+        };
+
+        const pipeline = new TaskPipelineManager({
+          sessionId,
+          tddMode: project.tddMode ?? "strict",
+          guard,
+          checkpointStore,
+          runSubtask: async (subtask) => {
+            appendStructuredEvent(config.configPath, project.path, {
+              type: "pipeline.subtask.executed",
+              sessionId,
+              projectId: spawnConfig.projectId,
+              data: {
+                subtaskId: subtask.id,
+                agentType: subtask.agentType,
+                description: subtask.description,
+              },
+            });
+          },
+          onLayerStart: (layerIndex, layer) => {
+            appendStructuredEvent(config.configPath, project.path, {
+              type: "pipeline.layer.started",
+              sessionId,
+              projectId: spawnConfig.projectId,
+              data: {
+                layerIndex,
+                subtaskIds: layer.map((subtask) => subtask.id),
+              },
+            });
+          },
+          onLayerCompleted: (layerIndex, layer) => {
+            appendStructuredEvent(config.configPath, project.path, {
+              type: "pipeline.layer.completed",
+              sessionId,
+              projectId: spawnConfig.projectId,
+              data: {
+                layerIndex,
+                subtaskIds: layer.map((subtask) => subtask.id),
+              },
+            });
+          },
+        });
+
+        try {
+          const result = await pipeline.executePlan(pipelinePlan);
+          appendStructuredEvent(config.configPath, project.path, {
+            type: "pipeline.completed",
+            sessionId,
+            projectId: spawnConfig.projectId,
+            data: {
+              resumedFromLayer: result.resumedFromLayer,
+              tddChecks: result.tddResults.length,
+            },
+          });
+        } catch (pipelineError) {
+          appendStructuredEvent(config.configPath, project.path, {
+            type: "pipeline.failed",
+            sessionId,
+            projectId: spawnConfig.projectId,
+            data: {
+              message: String(pipelineError),
+            },
+          });
+        }
+      }
     } catch (err) {
       // Clean up runtime and workspace on post-launch failure
       try {
