@@ -362,6 +362,63 @@ describe("spawn", () => {
     expect(existsSync(checkpointPath)).toBe(false);
   });
 
+  it("emits vram slot acquire and release events when scheduler config is present", async () => {
+    const schedulerConfig: OrchestratorConfig = {
+      ...config,
+      hosts: {
+        local: {
+          address: "localhost",
+          models: {
+            "model-tester": {
+              endpoint: "http://localhost:8081/v1",
+              vramGb: 8,
+              maxSlots: 1,
+            },
+            "model-developer": {
+              endpoint: "http://localhost:8082/v1",
+              vramGb: 8,
+              maxSlots: 1,
+            },
+            "model-reviewer": {
+              endpoint: "http://localhost:8083/v1",
+              vramGb: 8,
+              maxSlots: 1,
+            },
+          },
+        },
+      },
+      agentTypes: {
+        tester: { model: "model-tester", maxConcurrentPerHost: 1 },
+        developer: { model: "model-developer", maxConcurrentPerHost: 1 },
+        reviewer: { model: "model-reviewer", maxConcurrentPerHost: 1 },
+      },
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "full",
+        },
+      },
+    };
+
+    const sm = createSessionManager({ config: schedulerConfig, registry: mockRegistry });
+    await sm.spawn({ projectId: "my-app", issueId: "INT-42" });
+
+    const logPath = getEventLogPath(configPath, join(tmpDir, "my-app"));
+    const rows = readFileSync(logPath, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string; data?: Record<string, unknown> });
+
+    const acquired = rows.filter((row) => row.type === "vram.slot.acquired");
+    const released = rows.filter((row) => row.type === "vram.slot.released");
+
+    expect(acquired.length).toBe(3);
+    expect(released.length).toBe(3);
+    expect(acquired.every((row) => typeof row.data?.["host"] === "string")).toBe(true);
+    expect(released.every((row) => typeof row.data?.["model"] === "string")).toBe(true);
+  });
+
   it("emits selected test command from AGENTS.md in workflow full", async () => {
     const fullConfig: OrchestratorConfig = {
       ...config,

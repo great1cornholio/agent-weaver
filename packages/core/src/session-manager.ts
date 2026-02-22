@@ -60,6 +60,7 @@ import { TaskPipelineManager, type PipelineTddGuard } from "./pipeline-manager.j
 import { PipelineCheckpointManager } from "./pipeline-checkpoint.js";
 import type { SubtaskPlan } from "./pipeline-plan.js";
 import { resolveTestCommand } from "./test-command.js";
+import { VramScheduler } from "./vram-scheduler.js";
 
 /** Escape regex metacharacters in a string. */
 function escapeRegex(str: string): string {
@@ -600,6 +601,15 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         const pipelinePlan = buildDefaultFullWorkflowPlan(spawnConfig.issueId);
         const checkpointStore = new PipelineCheckpointManager(workspacePath, sessionId);
         const resolvedTestCommand = resolveTestCommand(project, workspacePath);
+        const scheduler =
+          config.hosts && config.agentTypes
+            ? new VramScheduler(config.hosts, config.agentTypes, {
+                queueLookahead: config.concurrency?.queueLookahead,
+                maxSkipsPerTask: config.concurrency?.maxSkipsPerTask,
+                retryBackoff: config.concurrency?.retryBackoff,
+                statePath: join(workspacePath, ".ao", `scheduler-${sessionId}.json`),
+              })
+            : null;
 
         appendStructuredEvent(config.configPath, project.path, {
           type: "pipeline.test.command.selected",
@@ -634,16 +644,76 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
           guard,
           checkpointStore,
           runSubtask: async (subtask) => {
-            appendStructuredEvent(config.configPath, project.path, {
-              type: "pipeline.subtask.executed",
-              sessionId,
-              projectId: spawnConfig.projectId,
-              data: {
-                subtaskId: subtask.id,
-                agentType: subtask.agentType,
-                description: subtask.description,
-              },
-            });
+            const shouldSchedule = Boolean(scheduler && config.agentTypes?.[subtask.agentType]);
+            let allocation: { host: string; model: string } | null = null;
+
+            if (shouldSchedule && scheduler) {
+              const scheduled = scheduler.schedule([
+                {
+                  id: subtask.id,
+                  agentType: subtask.agentType,
+                },
+              ]);
+
+              if ("error" in scheduled) {
+                appendStructuredEvent(config.configPath, project.path, {
+                  type: "vram.slot.waiting",
+                  sessionId,
+                  projectId: spawnConfig.projectId,
+                  data: {
+                    subtaskId: subtask.id,
+                    agentType: subtask.agentType,
+                    retryAfter: scheduled.retryAfter,
+                  },
+                });
+                throw new Error(
+                  `No VRAM slot available for ${subtask.agentType}; retry_after=${scheduled.retryAfter}`,
+                );
+              }
+
+              allocation = { host: scheduled.host, model: scheduled.model };
+              appendStructuredEvent(config.configPath, project.path, {
+                type: "vram.slot.acquired",
+                sessionId,
+                projectId: spawnConfig.projectId,
+                data: {
+                  subtaskId: subtask.id,
+                  agentType: subtask.agentType,
+                  host: scheduled.host,
+                  model: scheduled.model,
+                },
+              });
+            }
+
+            try {
+              appendStructuredEvent(config.configPath, project.path, {
+                type: "pipeline.subtask.executed",
+                sessionId,
+                projectId: spawnConfig.projectId,
+                data: {
+                  subtaskId: subtask.id,
+                  agentType: subtask.agentType,
+                  description: subtask.description,
+                  host: allocation?.host,
+                  model: allocation?.model,
+                },
+              });
+            } finally {
+              if (allocation && scheduler) {
+                scheduler.release(subtask.id, allocation.host, allocation.model, subtask.agentType);
+                appendStructuredEvent(config.configPath, project.path, {
+                  type: "vram.slot.released",
+                  sessionId,
+                  projectId: spawnConfig.projectId,
+                  data: {
+                    subtaskId: subtask.id,
+                    agentType: subtask.agentType,
+                    host: allocation.host,
+                    model: allocation.model,
+                  },
+                });
+              }
+            }
           },
           onSubtaskRetry: (subtask, attempt, error, nextDelayMs) => {
             appendStructuredEvent(config.configPath, project.path, {
