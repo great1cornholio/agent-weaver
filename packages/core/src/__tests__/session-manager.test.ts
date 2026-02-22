@@ -419,6 +419,52 @@ describe("spawn", () => {
     expect(released.every((row) => typeof row.data?.["model"] === "string")).toBe(true);
   });
 
+  it("emits vram.slot.waiting and pipeline.failed when no scheduler slot can be allocated", async () => {
+    const schedulerConfig: OrchestratorConfig = {
+      ...config,
+      hosts: {
+        local: {
+          address: "localhost",
+          models: {
+            "model-only-developer": {
+              endpoint: "http://localhost:8081/v1",
+              vramGb: 8,
+              maxSlots: 1,
+            },
+          },
+        },
+      },
+      agentTypes: {
+        tester: { model: "model-missing", maxConcurrentPerHost: 1 },
+        developer: { model: "model-only-developer", maxConcurrentPerHost: 1 },
+        reviewer: { model: "model-only-developer", maxConcurrentPerHost: 1 },
+      },
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "full",
+        },
+      },
+    };
+
+    const sm = createSessionManager({ config: schedulerConfig, registry: mockRegistry });
+    await sm.spawn({ projectId: "my-app", issueId: "INT-404" });
+
+    const logPath = getEventLogPath(configPath, join(tmpDir, "my-app"));
+    const rows = readFileSync(logPath, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string; data?: Record<string, unknown> });
+
+    const waitingRows = rows.filter((row) => row.type === "vram.slot.waiting");
+    const failed = rows.find((row) => row.type === "pipeline.failed");
+
+    expect(waitingRows.length).toBeGreaterThan(0);
+    expect(waitingRows[0]?.data?.["subtaskId"]).toBe("subtask-0");
+    expect(failed).toBeDefined();
+  });
+
   it("emits selected test command from AGENTS.md in workflow full", async () => {
     const fullConfig: OrchestratorConfig = {
       ...config,

@@ -111,3 +111,33 @@ pnpm run ao:smoke -- <project-id> [issue-id]
 ```
 
 This command builds CLI, runs spawn, and validates required pipeline events in `ao-events.jsonl`.
+
+### `vram.slot.waiting` appears in event log
+
+**Symptom**: Full workflow emits `vram.slot.waiting` and then `pipeline.failed`.
+
+**Root Cause**: Scheduler could not allocate a slot for a subtask agent type (model not available on hosts, or all slots busy).
+
+**Quick checks**:
+
+```bash
+# Check selected scheduler events for a session
+SESSION=<session-id>
+LOG=$(grep -Rsl -- "$SESSION" ~/.agent-orchestrator ~/.ao-sessions 2>/dev/null | grep 'ao-events.jsonl' | head -n1)
+tail -n 300 "$LOG" | jq -c --arg s "$SESSION" 'select(.sessionId==$s and (.type|test("^vram\\.slot")))'
+```
+
+**Fixes**:
+
+- Ensure `agentTypes.<type>.model` exists in at least one `hosts.<host>.models` entry.
+- Increase `maxSlots` for the blocked model if capacity is too low.
+- Tune `concurrency.retryBackoff` to reduce aggressive retry loops.
+
+Minimal config sanity check:
+
+```yaml
+concurrency:
+  queueLookahead: 5
+  maxSkipsPerTask: 2
+  retryBackoff: 30
+```
