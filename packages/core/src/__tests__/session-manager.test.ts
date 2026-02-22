@@ -25,6 +25,7 @@ let configPath: string;
 let sessionsDir: string;
 let mockRuntime: Runtime;
 let mockAgent: Agent;
+let mockCoordinatorAgent: Agent;
 let mockWorkspace: Workspace;
 let mockRegistry: PluginRegistry;
 let config: OrchestratorConfig;
@@ -61,6 +62,17 @@ beforeEach(() => {
     getSessionInfo: vi.fn().mockResolvedValue(null),
   };
 
+  mockCoordinatorAgent = {
+    name: "coordinator",
+    processName: "codex",
+    getLaunchCommand: vi.fn().mockReturnValue("codex --coordinator"),
+    getEnvironment: vi.fn().mockReturnValue({ AGENT_VAR: "coord" }),
+    detectActivity: vi.fn().mockReturnValue("active"),
+    getActivityState: vi.fn().mockResolvedValue({ state: "active" }),
+    isProcessRunning: vi.fn().mockResolvedValue(true),
+    getSessionInfo: vi.fn().mockResolvedValue(null),
+  };
+
   mockWorkspace = {
     name: "mock-ws",
     create: vi.fn().mockResolvedValue({
@@ -75,9 +87,9 @@ beforeEach(() => {
 
   mockRegistry = {
     register: vi.fn(),
-    get: vi.fn().mockImplementation((slot: string, _name: string) => {
+    get: vi.fn().mockImplementation((slot: string, name: string) => {
       if (slot === "runtime") return mockRuntime;
-      if (slot === "agent") return mockAgent;
+      if (slot === "agent") return name === "coordinator" ? mockCoordinatorAgent : mockAgent;
       if (slot === "workspace") return mockWorkspace;
       return null;
     }),
@@ -225,6 +237,100 @@ describe("spawn", () => {
     expect(last.sessionId).toBe("app-1");
     expect(last.projectId).toBe("my-app");
     expect(last.data.issueId).toBe("INT-42");
+    expect(last.data.workflow).toBe("simple");
+  });
+
+  it("uses coordinator agent for workflow full", async () => {
+    const fullConfig: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "full",
+        },
+      },
+    };
+
+    const sm = createSessionManager({ config: fullConfig, registry: mockRegistry });
+    await sm.spawn({ projectId: "my-app", issueId: "INT-42" });
+
+    expect(mockCoordinatorAgent.getLaunchCommand).toHaveBeenCalled();
+    expect(mockAgent.getLaunchCommand).not.toHaveBeenCalled();
+  });
+
+  it("throws when workflow full is configured and coordinator plugin is missing", async () => {
+    const fullConfig: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "full",
+        },
+      },
+    };
+
+    const registryWithoutCoordinator: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return name === "coordinator" ? null : mockAgent;
+        if (slot === "workspace") return mockWorkspace;
+        return null;
+      }),
+    };
+
+    const sm = createSessionManager({ config: fullConfig, registry: registryWithoutCoordinator });
+    await expect(sm.spawn({ projectId: "my-app", issueId: "INT-42" })).rejects.toThrow(
+      "Agent plugin 'coordinator' not found",
+    );
+  });
+
+  it("resolves workflow auto to full for complex issue labels", async () => {
+    const autoConfig: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "auto",
+        },
+      },
+    };
+
+    const mockTracker: Tracker = {
+      name: "mock-tracker",
+      getIssue: vi.fn().mockResolvedValue({
+        id: "INT-100",
+        title: "Epic task",
+        description: "Short description",
+        url: "https://tracker/issues/INT-100",
+        state: "open",
+        labels: ["epic"],
+      }),
+      isCompleted: vi.fn().mockResolvedValue(false),
+      issueUrl: vi.fn().mockReturnValue("https://tracker/issues/INT-100"),
+      branchName: vi.fn().mockReturnValue("feat/INT-100"),
+      generatePrompt: vi.fn().mockResolvedValue("Work on INT-100"),
+    };
+
+    const registryWithTracker: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return name === "coordinator" ? mockCoordinatorAgent : mockAgent;
+        if (slot === "workspace") return mockWorkspace;
+        if (slot === "tracker") return mockTracker;
+        return null;
+      }),
+    };
+
+    const sm = createSessionManager({ config: autoConfig, registry: registryWithTracker });
+    await sm.spawn({ projectId: "my-app", issueId: "INT-100" });
+
+    expect(mockCoordinatorAgent.getLaunchCommand).toHaveBeenCalled();
+    expect(mockAgent.getLaunchCommand).not.toHaveBeenCalled();
   });
 
   it("throws for unknown project", async () => {

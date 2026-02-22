@@ -113,6 +113,26 @@ function validateStatus(raw: string | undefined): SessionStatus {
   return "spawning";
 }
 
+type WorkflowMode = "simple" | "full" | "auto";
+
+function resolveWorkflowMode(project: ProjectConfig, issue?: Issue): "simple" | "full" {
+  const configuredWorkflow = project.workflow ?? "simple";
+  if (configuredWorkflow !== "auto") {
+    return configuredWorkflow;
+  }
+
+  if (!issue) {
+    return "simple";
+  }
+
+  const hasComplexLabel = issue.labels.some((label) => /epic|complex/i.test(label));
+  if (hasComplexLabel) {
+    return "full";
+  }
+
+  return issue.description.length > 500 ? "full" : "simple";
+}
+
 /** Reconstruct a Session object from raw metadata key=value pairs. */
 function metadataToSession(
   sessionId: SessionId,
@@ -428,6 +448,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       }
     }
 
+    const resolvedWorkflow = resolveWorkflowMode(project, resolvedIssue);
+
     // Generate prompt with validated issue
     let issueContext: string | undefined;
     if (spawnConfig.issueId && plugins.tracker && resolvedIssue) {
@@ -447,6 +469,14 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       userPrompt: spawnConfig.prompt,
     });
 
+    const selectedAgentName =
+      resolvedWorkflow === "full" ? "coordinator" : (project.agent ?? config.defaults.agent);
+    const selectedAgent =
+      resolvedWorkflow === "full" ? registry.get<Agent>("agent", "coordinator") : plugins.agent;
+    if (!selectedAgent) {
+      throw new Error(`Agent plugin '${selectedAgentName}' not found`);
+    }
+
     // Get agent launch config and create runtime — clean up workspace on failure
     const agentLaunchConfig = {
       sessionId,
@@ -459,8 +489,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
 
     let handle: RuntimeHandle;
     try {
-      const launchCommand = plugins.agent.getLaunchCommand(agentLaunchConfig);
-      const environment = plugins.agent.getEnvironment(agentLaunchConfig);
+      const launchCommand = selectedAgent.getLaunchCommand(agentLaunchConfig);
+      const environment = selectedAgent.getEnvironment(agentLaunchConfig);
 
       handle = await plugins.runtime.create({
         sessionId: tmuxName ?? sessionId, // Use tmux name for runtime if available
@@ -520,8 +550,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         runtimeHandle: JSON.stringify(handle),
       });
 
-      if (plugins.agent.postLaunchSetup) {
-        await plugins.agent.postLaunchSetup(session);
+      if (selectedAgent.postLaunchSetup) {
+        await selectedAgent.postLaunchSetup(session);
       }
 
       appendStructuredEvent(config.configPath, project.path, {
@@ -531,7 +561,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         data: {
           issueId: spawnConfig.issueId ?? null,
           branch,
-          workflow: project.workflow ?? "simple",
+          workflow: resolvedWorkflow,
+          agent: selectedAgent.name,
         },
       });
     } catch (err) {
