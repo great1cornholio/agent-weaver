@@ -79,3 +79,7 @@ export {
   expandHome,
   validateAndStoreOrigin,
 } from "./paths.js";
+
+// Structured event logging (Epic 1)
+export { appendStructuredEvent, getEventLogPath } from "./event-log.js";
+export type { StructuredEventLogEntry } from "./event-log.js";

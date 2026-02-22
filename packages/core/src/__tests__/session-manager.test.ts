@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { createSessionManager } from "../session-manager.js";
 import { writeMetadata, readMetadata, readMetadataRaw, deleteMetadata } from "../metadata.js";
 import { getSessionsDir, getProjectBaseDir } from "../paths.js";
+import { getEventLogPath } from "../event-log.js";
 import {
   SessionNotRestorableError,
   WorkspaceMissingError,
@@ -210,6 +211,20 @@ describe("spawn", () => {
     expect(meta!.status).toBe("spawning");
     expect(meta!.project).toBe("my-app");
     expect(meta!.issue).toBe("INT-42");
+  });
+
+  it("writes session.started event to ao-events.jsonl", async () => {
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    await sm.spawn({ projectId: "my-app", issueId: "INT-42" });
+
+    const logPath = getEventLogPath(configPath, join(tmpDir, "my-app"));
+    const lines = readFileSync(logPath, "utf-8").trim().split("\n");
+    const last = JSON.parse(lines[lines.length - 1] ?? "{}");
+
+    expect(last.type).toBe("session.started");
+    expect(last.sessionId).toBe("app-1");
+    expect(last.projectId).toBe("my-app");
+    expect(last.data.issueId).toBe("INT-42");
   });
 
   it("throws for unknown project", async () => {
@@ -682,6 +697,27 @@ describe("kill", () => {
     const sm = createSessionManager({ config, registry: registryWithFail });
     // Should not throw even though runtime.destroy fails
     await expect(sm.kill("app-1")).resolves.toBeUndefined();
+  });
+
+  it("writes session.completed event to ao-events.jsonl on kill", async () => {
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp/ws",
+      branch: "main",
+      status: "working",
+      project: "my-app",
+      runtimeHandle: JSON.stringify(makeHandle("rt-1")),
+    });
+
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    await sm.kill("app-1");
+
+    const logPath = getEventLogPath(configPath, join(tmpDir, "my-app"));
+    const lines = readFileSync(logPath, "utf-8").trim().split("\n");
+    const last = JSON.parse(lines[lines.length - 1] ?? "{}");
+
+    expect(last.type).toBe("session.completed");
+    expect(last.sessionId).toBe("app-1");
+    expect(last.data.finalStatus).toBe("killed");
   });
 });
 

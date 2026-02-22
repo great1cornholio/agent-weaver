@@ -55,6 +55,7 @@ import {
   generateConfigHash,
   validateAndStoreOrigin,
 } from "./paths.js";
+import { appendStructuredEvent } from "./event-log.js";
 
 /** Escape regex metacharacters in a string. */
 function escapeRegex(str: string): string {
@@ -522,6 +523,17 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       if (plugins.agent.postLaunchSetup) {
         await plugins.agent.postLaunchSetup(session);
       }
+
+      appendStructuredEvent(config.configPath, project.path, {
+        type: "session.started",
+        sessionId,
+        projectId: spawnConfig.projectId,
+        data: {
+          issueId: spawnConfig.issueId ?? null,
+          branch,
+          workflow: "simple",
+        },
+      });
     } catch (err) {
       // Clean up runtime and workspace on post-launch failure
       try {
@@ -650,6 +662,16 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       if (plugins.agent.postLaunchSetup) {
         await plugins.agent.postLaunchSetup(session);
       }
+
+      appendStructuredEvent(config.configPath, project.path, {
+        type: "session.started",
+        sessionId,
+        projectId: orchestratorConfig.projectId,
+        data: {
+          orchestrator: true,
+          branch: project.defaultBranch,
+        },
+      });
     } catch (err) {
       // Clean up runtime on post-launch failure
       try {
@@ -794,6 +816,18 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
 
     // Archive metadata
     deleteMetadata(sessionsDir, sessionId, true);
+
+    if (project) {
+      appendStructuredEvent(config.configPath, project.path, {
+        type: "session.completed",
+        sessionId,
+        projectId: raw["project"] ?? "",
+        data: {
+          finalStatus: "killed",
+          reason: "manual-kill",
+        },
+      });
+    }
   }
 
   async function cleanup(

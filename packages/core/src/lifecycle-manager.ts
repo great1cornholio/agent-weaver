@@ -35,6 +35,7 @@ import {
 } from "./types.js";
 import { updateMetadata } from "./metadata.js";
 import { getSessionsDir } from "./paths.js";
+import { appendStructuredEvent } from "./event-log.js";
 
 /** Parse a duration string like "10m", "30s", "1h" to milliseconds. */
 function parseDuration(str: string): number {
@@ -156,6 +157,14 @@ function eventToReactionKey(eventType: EventType): string | null {
   }
 }
 
+function normalizeTddResult(raw: string): "passed" | "failed" {
+  const value = raw.trim().toLowerCase();
+  if (value === "pass" || value === "passed" || value === "ok" || value === "true" || value === "1") {
+    return "passed";
+  }
+  return "failed";
+}
+
 export interface LifecycleManagerDeps {
   config: OrchestratorConfig;
   registry: PluginRegistry;
@@ -174,6 +183,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
 
   const states = new Map<SessionId, SessionStatus>();
   const reactionTrackers = new Map<string, ReactionTracker>(); // "sessionId:reactionKey"
+  const loggedTddResults = new Set<string>(); // "sessionId:red|green"
+  const loggedCompletionMarkers = new Set<string>(); // sessionId
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let polling = false; // re-entrancy guard
   let allCompleteEmitted = false; // guard against repeated all_complete
@@ -412,8 +423,69 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     }
   }
 
+  function appendSessionEventLog(
+    session: Session,
+    type: string,
+    data?: Record<string, unknown>,
+  ): void {
+    const project = config.projects[session.projectId];
+    if (!project) return;
+
+    appendStructuredEvent(config.configPath, project.path, {
+      type,
+      sessionId: session.id,
+      projectId: session.projectId,
+      data,
+    });
+  }
+
+  async function detectAndLogTddSignals(session: Session): Promise<void> {
+    const project = config.projects[session.projectId];
+    if (!project || !session.runtimeHandle) return;
+
+    const runtime = registry.get<Runtime>("runtime", project.runtime ?? config.defaults.runtime);
+    if (!runtime) return;
+
+    let output = "";
+    try {
+      output = await runtime.getOutput(session.runtimeHandle, 200);
+    } catch {
+      return;
+    }
+    if (!output.trim()) return;
+
+    const tddPattern = /tdd\.(red|green)\.result\s*[:=]\s*([a-z0-9_\-]+)/gi;
+    let match: RegExpExecArray | null = tddPattern.exec(output);
+    while (match) {
+      const phase = match[1]?.toLowerCase();
+      const resultRaw = match[2] ?? "failed";
+      if ((phase === "red" || phase === "green") && !loggedTddResults.has(`${session.id}:${phase}`)) {
+        loggedTddResults.add(`${session.id}:${phase}`);
+        appendSessionEventLog(session, `tdd.${phase}.result`, {
+          result: normalizeTddResult(resultRaw),
+        });
+      }
+      match = tddPattern.exec(output);
+    }
+
+    if (!loggedCompletionMarkers.has(session.id)) {
+      const completed =
+        /completiondetector\s*[:=]\s*completed/i.test(output) ||
+        /ao_completion\s*[:=]\s*completed/i.test(output) ||
+        /completion\s+detected/i.test(output);
+      if (completed) {
+        loggedCompletionMarkers.add(session.id);
+        appendSessionEventLog(session, "completion.detected", {
+          source: "terminal-output-marker",
+        });
+      }
+    }
+  }
+
   /** Poll a single session and handle state transitions. */
   async function checkSession(session: Session): Promise<void> {
+    await detectAndLogTddSignals(session);
+
     // Use tracked state if available; otherwise use the persisted metadata status
     // (not session.status, which list() may have already overwritten for dead runtimes).
     // This ensures transitions are detected after a lifecycle manager restart.
@@ -493,6 +565,12 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             await notifyHuman(event, priority);
           }
         }
+
+        if (newStatus === "merged" || newStatus === "killed") {
+          appendSessionEventLog(session, "session.completed", {
+            finalStatus: newStatus,
+          });
+        }
       }
     } else {
       // No transition but track current state
@@ -527,6 +605,9 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       for (const trackedId of states.keys()) {
         if (!currentSessionIds.has(trackedId)) {
           states.delete(trackedId);
+          loggedCompletionMarkers.delete(trackedId);
+          loggedTddResults.delete(`${trackedId}:red`);
+          loggedTddResults.delete(`${trackedId}:green`);
         }
       }
       for (const trackerKey of reactionTrackers.keys()) {
