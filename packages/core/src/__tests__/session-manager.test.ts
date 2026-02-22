@@ -362,6 +362,58 @@ describe("spawn", () => {
     expect(existsSync(checkpointPath)).toBe(false);
   });
 
+  it("emits selected test command from AGENTS.md in workflow full", async () => {
+    const fullConfig: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "full",
+          testCmd: "pnpm test",
+        },
+      },
+    };
+
+    const workspacePath = join(tmpDir, "workspaces", "app-1");
+    mkdirSync(workspacePath, { recursive: true });
+    writeFileSync(join(workspacePath, "AGENTS.md"), "Test command: npm run test:ci\n", "utf-8");
+
+    const workspaceWithAgents: Workspace = {
+      ...mockWorkspace,
+      create: vi.fn().mockResolvedValue({
+        path: workspacePath,
+        branch: "feat/INT-42",
+        sessionId: "app-1",
+        projectId: "my-app",
+      }),
+    };
+
+    const registry: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return name === "coordinator" ? mockCoordinatorAgent : mockAgent;
+        if (slot === "workspace") return workspaceWithAgents;
+        return null;
+      }),
+    };
+
+    const sm = createSessionManager({ config: fullConfig, registry });
+    await sm.spawn({ projectId: "my-app", issueId: "INT-42" });
+
+    const logPath = getEventLogPath(configPath, join(tmpDir, "my-app"));
+    const rows = readFileSync(logPath, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string; data?: Record<string, unknown> });
+
+    const selected = rows.find((row) => row.type === "pipeline.test.command.selected");
+    expect(selected).toBeDefined();
+    expect(selected?.data?.["command"]).toBe("npm run test:ci");
+    expect(selected?.data?.["source"]).toBe("agents");
+  });
+
   it("throws for unknown project", async () => {
     const sm = createSessionManager({ config, registry: mockRegistry });
     await expect(sm.spawn({ projectId: "nonexistent" })).rejects.toThrow("Unknown project");

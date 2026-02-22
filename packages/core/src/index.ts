@@ -103,3 +103,7 @@ export type {
 } from "./pipeline-manager.js";
 export { PipelineCheckpointManager, hashSubtaskPlan } from "./pipeline-checkpoint.js";
 export type { PipelineCheckpoint, SubtaskCheckpointResult } from "./pipeline-checkpoint.js";
+
+// Test command resolution (Epic 3)
+export { resolveTestCommand } from "./test-command.js";
+export type { ResolvedTestCommand, TestCommandSource } from "./test-command.js";

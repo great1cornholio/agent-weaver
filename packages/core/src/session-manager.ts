@@ -59,6 +59,7 @@ import { appendStructuredEvent } from "./event-log.js";
 import { TaskPipelineManager, type PipelineTddGuard } from "./pipeline-manager.js";
 import { PipelineCheckpointManager } from "./pipeline-checkpoint.js";
 import type { SubtaskPlan } from "./pipeline-plan.js";
+import { resolveTestCommand } from "./test-command.js";
 
 /** Escape regex metacharacters in a string. */
 function escapeRegex(str: string): string {
@@ -598,18 +599,30 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       if (resolvedWorkflow === "full") {
         const pipelinePlan = buildDefaultFullWorkflowPlan(spawnConfig.issueId);
         const checkpointStore = new PipelineCheckpointManager(workspacePath, sessionId);
+        const resolvedTestCommand = resolveTestCommand(project, workspacePath);
+
+        appendStructuredEvent(config.configPath, project.path, {
+          type: "pipeline.test.command.selected",
+          sessionId,
+          projectId: spawnConfig.projectId,
+          data: {
+            command: resolvedTestCommand.command,
+            source: resolvedTestCommand.source,
+          },
+        });
+
         const guard: PipelineTddGuard = {
           assertRed: async () => ({
             phase: "red",
             passed: true,
             testExit: 1,
-            output: "bootstrap-red-pass",
+            output: `bootstrap-red-pass (${resolvedTestCommand.command})`,
           }),
           assertGreen: async () => ({
             phase: "green",
             passed: true,
             testExit: 0,
-            output: "bootstrap-green-pass",
+            output: `bootstrap-green-pass (${resolvedTestCommand.command})`,
           }),
         };
 
