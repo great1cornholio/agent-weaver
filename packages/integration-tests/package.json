@@ -17,6 +17,8 @@
     "@composio/ao-plugin-agent-opencode": "workspace:*",
     "@composio/ao-plugin-runtime-tmux": "workspace:*",
     "@composio/ao-plugin-runtime-process": "workspace:*",
+    "@composio/ao-plugin-scm-gitlab": "workspace:*",
+    "@composio/ao-plugin-tracker-gitlab": "workspace:*",
     "@composio/ao-plugin-workspace-worktree": "workspace:*",
     "@composio/ao-plugin-workspace-clone": "workspace:*",
     "@composio/ao-plugin-tracker-linear": "workspace:*"
@@ -24,6 +26,7 @@
   "devDependencies": {
     "@composio/ao-plugin-notifier-desktop": "workspace:*",
     "@composio/ao-plugin-notifier-slack": "workspace:*",
+    "@composio/ao-plugin-notifier-telegram": "workspace:*",
     "@composio/ao-plugin-notifier-webhook": "workspace:*",
     "@composio/ao-plugin-notifier-composio": "workspace:*",
     "@composio/ao-plugin-terminal-iterm2": "workspace:*",
