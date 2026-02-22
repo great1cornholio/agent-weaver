@@ -812,6 +812,12 @@ export interface OrchestratorConfig {
   /** Default plugin selections */
   defaults: DefaultPlugins;
 
+  /** Optional inference hosts and model slot configuration (Epic 3) */
+  hosts?: Record<string, HostConfig>;
+
+  /** Optional agent type to model mapping for scheduler constraints (Epic 3) */
+  agentTypes?: Record<string, AgentTypeConfig>;
+
   /** Project configurations */
   projects: Record<string, ProjectConfig>;
 
@@ -830,6 +836,30 @@ export interface DefaultPlugins {
   agent: string;
   workspace: string;
   notifiers: string[];
+}
+
+export interface HostModelConfig {
+  endpoint: string;
+  vramGb: number;
+  maxSlots: number;
+  contextWindow?: number;
+  file?: string;
+}
+
+export interface HostConfig {
+  address: string;
+  totalVramGb?: number;
+  healthCheck?: string;
+  auth?: {
+    type: string;
+    token: string;
+  };
+  models: Record<string, HostModelConfig>;
+}
+
+export interface AgentTypeConfig {
+  model: string;
+  maxConcurrentPerHost?: number;
 }
 
 export interface ProjectConfig {

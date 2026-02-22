@@ -58,6 +58,32 @@ const AgentSpecificConfigSchema = z
   })
   .passthrough();
 
+const HostModelConfigSchema = z.object({
+  endpoint: z.string(),
+  vramGb: z.number().positive(),
+  maxSlots: z.number().int().positive(),
+  contextWindow: z.number().int().positive().optional(),
+  file: z.string().optional(),
+});
+
+const HostConfigSchema = z.object({
+  address: z.string(),
+  totalVramGb: z.number().positive().optional(),
+  healthCheck: z.string().optional(),
+  auth: z
+    .object({
+      type: z.string(),
+      token: z.string(),
+    })
+    .optional(),
+  models: z.record(HostModelConfigSchema),
+});
+
+const AgentTypeConfigSchema = z.object({
+  model: z.string(),
+  maxConcurrentPerHost: z.number().int().positive().optional(),
+});
+
 const ProjectConfigSchema = z.object({
   name: z.string().optional(),
   repo: z.string(),
@@ -97,6 +123,8 @@ const OrchestratorConfigSchema = z.object({
   directTerminalPort: z.number().optional(),
   readyThresholdMs: z.number().nonnegative().default(300_000),
   defaults: DefaultPluginsSchema.default({}),
+  hosts: z.record(HostConfigSchema).optional(),
+  agentTypes: z.record(AgentTypeConfigSchema).optional(),
   projects: z.record(ProjectConfigSchema),
   notifiers: z.record(NotifierConfigSchema).default({}),
   notificationRouting: z.record(z.array(z.string())).default({
@@ -107,6 +135,29 @@ const OrchestratorConfigSchema = z.object({
   }),
   reactions: z.record(ReactionConfigSchema).default({}),
 });
+
+function validateVramBudgets(config: OrchestratorConfig): void {
+  if (!config.hosts) {
+    return;
+  }
+
+  for (const [hostName, host] of Object.entries(config.hosts)) {
+    const hostLimit = host.totalVramGb;
+    if (hostLimit === undefined) {
+      continue;
+    }
+
+    const allocated = Object.values(host.models).reduce((sum, model) => {
+      return sum + model.vramGb * model.maxSlots;
+    }, 0);
+
+    if (allocated > hostLimit) {
+      throw new Error(
+        `Host ${hostName}: allocated VRAM ${allocated}GB exceeds totalVramGb ${hostLimit}GB`,
+      );
+    }
+  }
+}
 
 // =============================================================================
 // CONFIG LOADING
@@ -412,6 +463,7 @@ export function validateConfig(raw: unknown): OrchestratorConfig {
 
   // Validate project uniqueness and prefix collisions
   validateProjectUniqueness(config);
+  validateVramBudgets(config);
 
   return config;
 }

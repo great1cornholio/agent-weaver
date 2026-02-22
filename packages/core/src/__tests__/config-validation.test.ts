@@ -503,3 +503,95 @@ describe("Epic 2 project workflow config", () => {
     expect(() => validateConfig(invalidTddMode)).toThrow();
   });
 });
+
+describe("Epic 3 VRAM host budget validation", () => {
+  it("accepts host config when model budget fits totalVramGb", () => {
+    const config = {
+      hosts: {
+        local: {
+          address: "localhost",
+          totalVramGb: 128,
+          models: {
+            "gpt-oss-120": {
+              endpoint: "http://localhost:8082/v1",
+              vramGb: 60,
+              maxSlots: 1,
+            },
+            "qwen3-coder-30b-a3b": {
+              endpoint: "http://localhost:8081/v1",
+              vramGb: 18,
+              maxSlots: 2,
+            },
+          },
+        },
+      },
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it("rejects host config when allocated VRAM exceeds totalVramGb", () => {
+    const config = {
+      hosts: {
+        local: {
+          address: "localhost",
+          totalVramGb: 64,
+          models: {
+            "gpt-oss-120": {
+              endpoint: "http://localhost:8082/v1",
+              vramGb: 60,
+              maxSlots: 1,
+            },
+            "qwen3-coder-30b-a3b": {
+              endpoint: "http://localhost:8081/v1",
+              vramGb: 18,
+              maxSlots: 2,
+            },
+          },
+        },
+      },
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    expect(() => validateConfig(config)).toThrow(/allocated VRAM .* exceeds totalVramGb/i);
+  });
+
+  it("allows hosts without totalVramGb (no explicit budget)", () => {
+    const config = {
+      hosts: {
+        remote: {
+          address: "192.168.1.50",
+          models: {
+            "qwen3-coder-next-80b": {
+              endpoint: "http://192.168.1.50:8080/v1",
+              vramGb: 47,
+              maxSlots: 1,
+            },
+          },
+        },
+      },
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+});
