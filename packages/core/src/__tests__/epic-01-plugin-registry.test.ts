@@ -42,6 +42,8 @@ describe("Epic 1 scope - built-in plugin coverage", () => {
     });
 
     expect(importedPackages).toContain("@composio/ao-plugin-agent-aider");
+    expect(importedPackages).toContain("@composio/ao-plugin-agent-coordinator");
+    expect(importedPackages).toContain("@composio/ao-plugin-agent-reviewer");
     expect(importedPackages).toContain("@composio/ao-plugin-runtime-process");
     expect(importedPackages).toContain("@composio/ao-plugin-runtime-tmux");
   });
