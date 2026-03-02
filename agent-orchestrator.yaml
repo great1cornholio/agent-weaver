@@ -5,17 +5,57 @@ worktreeDir: ~/.worktrees/ao
 
 defaults:
   runtime: tmux
-  agent: claude-code
+  agent: aider
   workspace: worktree
-  notifiers: [desktop]
+  notifiers: [telegram]
+
+hosts:
+  local:
+    address: localhost
+    totalVramGb: 128
+    healthCheck: http://localhost:8080/health
+    models:
+      gpt-oss-120:
+        file: gpt-oss-120-q4_k_xl.gguf
+        endpoint: http://localhost:8082/v1
+        vramGb: 60
+        maxSlots: 1
+        contextWindow: 65536
+      qwen3-coder-30b-a3b:
+        file: qwen3-coder-30b-a3b-q4_k_m.gguf
+        endpoint: http://localhost:8081/v1
+        vramGb: 18
+        maxSlots: 2
+        contextWindow: 32768
+
+agentTypes:
+  coordinator:
+    model: gpt-oss-120
+    maxConcurrentPerHost: 1
+  developer:
+    model: qwen3-coder-30b-a3b
+    maxConcurrentPerHost: 1
+  reviewer:
+    model: gpt-oss-120 # using local model for reviewer as well
+    maxConcurrentPerHost: 1
+  tester:
+    model: qwen3-coder-30b-a3b
+    maxConcurrentPerHost: 1
+
+concurrency:
+  mode: parallel
+  queueSize: 20
+  queueStrategy: priority
 
 projects:
   ao:
     name: Agent Orchestrator
-    repo: ComposioHQ/agent-orchestrator
-    path: ~/agent-orchestrator
+    repo: great1cornholio/agent-weaver
+    path: /home/rascal/agent-weaver
     defaultBranch: main
     sessionPrefix: ao
+    workflow: simple
+    tddMode: strict
     scm:
       plugin: github
     tracker:
@@ -26,3 +66,22 @@ projects:
       - "pnpm install"
     agentConfig:
       permissions: skip
+      model: openai/gpt-oss-120b-Q8_0-00001-of-00002.gguf
+
+  sandbox:
+    name: Sandbox Project
+    repo: great_cornholio/sandbox-project
+    path: /home/rascal/sandbox-project
+    defaultBranch: main
+    sessionPrefix: sbx
+    workflow: simple
+    tddMode: strict
+    scm:
+      plugin: gitlab
+    tracker:
+      plugin: gitlab
+      url: "http://192.168.1.190:9080"
+    symlinks: [.claude]
+    agentConfig:
+      permissions: skip
+      model: openai/gpt-oss-120b-Q8_0-00001-of-00002.gguf

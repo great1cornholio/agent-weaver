@@ -4,11 +4,10 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { type Session, type SessionManager, getSessionsDir } from "@composio/ao-core";
 
-const { mockTmux, mockExec, mockGh, mockConfigRef, mockSessionManager, sessionsDirRef } =
+const { mockTmux, mockExec, mockConfigRef, mockSessionManager, mockRegistryGet, sessionsDirRef } =
   vi.hoisted(() => ({
     mockTmux: vi.fn(),
     mockExec: vi.fn(),
-    mockGh: vi.fn(),
     mockConfigRef: { current: null as Record<string, unknown> | null },
     mockSessionManager: {
       list: vi.fn(),
@@ -19,6 +18,7 @@ const { mockTmux, mockExec, mockGh, mockConfigRef, mockSessionManager, sessionsD
       spawnOrchestrator: vi.fn(),
       send: vi.fn(),
     },
+    mockRegistryGet: vi.fn(),
     sessionsDirRef: { current: "" },
   }));
 
@@ -27,7 +27,6 @@ vi.mock("../../src/lib/shell.js", () => ({
   exec: mockExec,
   execSilent: vi.fn(),
   git: vi.fn(),
-  gh: mockGh,
   getTmuxSessions: async () => {
     const output = await mockTmux("list-sessions", "-F", "#{session_name}");
     if (!output) return [];
@@ -94,6 +93,9 @@ function buildSessionsFromDir(dir: string, projectId: string): Session[] {
 
 vi.mock("../../src/lib/create-session-manager.js", () => ({
   getSessionManager: async (): Promise<SessionManager> => mockSessionManager as SessionManager,
+  getPluginRegistry: async () => ({
+    get: mockRegistryGet,
+  }),
 }));
 
 let tmpDir: string;
@@ -150,7 +152,6 @@ beforeEach(() => {
 
   mockTmux.mockReset();
   mockExec.mockReset();
-  mockGh.mockReset();
   mockExec.mockResolvedValue({ stdout: "", stderr: "" });
   mockSessionManager.list.mockReset();
   mockSessionManager.kill.mockReset();
@@ -158,6 +159,40 @@ beforeEach(() => {
   mockSessionManager.get.mockReset();
   mockSessionManager.spawn.mockReset();
   mockSessionManager.send.mockReset();
+  mockRegistryGet.mockReset();
+
+  mockRegistryGet.mockImplementation((slot: string) => {
+    if (slot === "scm") {
+      return {
+        name: "github",
+        detectPR: vi.fn().mockResolvedValue(null),
+        getPRState: vi.fn().mockResolvedValue("open"),
+        getPRSummary: vi.fn().mockResolvedValue({
+          state: "open",
+          title: "",
+          additions: 0,
+          deletions: 0,
+        }),
+        mergePR: vi.fn(),
+        closePR: vi.fn(),
+        getCIChecks: vi.fn().mockResolvedValue([]),
+        getCISummary: vi.fn().mockResolvedValue("none"),
+        getReviews: vi.fn().mockResolvedValue([]),
+        getReviewDecision: vi.fn().mockResolvedValue("none"),
+        getPendingComments: vi.fn().mockResolvedValue([]),
+        getAutomatedComments: vi.fn().mockResolvedValue([]),
+        getMergeability: vi.fn().mockResolvedValue({
+          mergeable: true,
+          ciPassing: true,
+          approved: false,
+          noConflicts: true,
+          blockers: [],
+        }),
+      };
+    }
+
+    return null;
+  });
 
   // Default: list reads from sessionsDir
   mockSessionManager.list.mockImplementation(async () => {
@@ -177,13 +212,35 @@ describe("review-check command", () => {
       "branch=feat/fix\npr=https://github.com/org/my-app/pull/10\n",
     );
 
-    // All threads resolved, no changes requested
-    mockGh.mockResolvedValue(
-      JSON.stringify({
-        reviewDecision: "APPROVED",
-        reviewThreads: { nodes: [{ isResolved: true }] },
-      }),
-    );
+    mockRegistryGet.mockImplementation((slot: string) => {
+      if (slot !== "scm") return null;
+      return {
+        name: "github",
+        detectPR: vi.fn().mockResolvedValue(null),
+        getPRState: vi.fn().mockResolvedValue("open"),
+        getPRSummary: vi.fn().mockResolvedValue({
+          state: "open",
+          title: "",
+          additions: 0,
+          deletions: 0,
+        }),
+        mergePR: vi.fn(),
+        closePR: vi.fn(),
+        getCIChecks: vi.fn().mockResolvedValue([]),
+        getCISummary: vi.fn().mockResolvedValue("none"),
+        getReviews: vi.fn().mockResolvedValue([]),
+        getReviewDecision: vi.fn().mockResolvedValue("approved"),
+        getPendingComments: vi.fn().mockResolvedValue([]),
+        getAutomatedComments: vi.fn().mockResolvedValue([]),
+        getMergeability: vi.fn().mockResolvedValue({
+          mergeable: true,
+          ciPassing: true,
+          approved: true,
+          noConflicts: true,
+          blockers: [],
+        }),
+      };
+    });
 
     await program.parseAsync(["node", "test", "review-check"]);
 
@@ -197,19 +254,51 @@ describe("review-check command", () => {
       "branch=feat/fix\npr=https://github.com/org/my-app/pull/10\n",
     );
 
-    mockGh.mockResolvedValue(
-      JSON.stringify({
-        reviewDecision: "CHANGES_REQUESTED",
-        reviewThreads: { nodes: [{ isResolved: false }, { isResolved: true }] },
-      }),
-    );
+    mockRegistryGet.mockImplementation((slot: string) => {
+      if (slot !== "scm") return null;
+      return {
+        name: "github",
+        detectPR: vi.fn().mockResolvedValue(null),
+        getPRState: vi.fn().mockResolvedValue("open"),
+        getPRSummary: vi.fn().mockResolvedValue({
+          state: "open",
+          title: "",
+          additions: 0,
+          deletions: 0,
+        }),
+        mergePR: vi.fn(),
+        closePR: vi.fn(),
+        getCIChecks: vi.fn().mockResolvedValue([]),
+        getCISummary: vi.fn().mockResolvedValue("none"),
+        getReviews: vi.fn().mockResolvedValue([]),
+        getReviewDecision: vi.fn().mockResolvedValue("changes_requested"),
+        getPendingComments: vi.fn().mockResolvedValue([
+          {
+            id: "1",
+            author: "reviewer",
+            body: "please fix",
+            isResolved: false,
+            createdAt: new Date(),
+            url: "https://github.com/org/my-app/pull/10",
+          },
+        ]),
+        getAutomatedComments: vi.fn().mockResolvedValue([]),
+        getMergeability: vi.fn().mockResolvedValue({
+          mergeable: false,
+          ciPassing: true,
+          approved: false,
+          noConflicts: true,
+          blockers: ["review"],
+        }),
+      };
+    });
 
     await program.parseAsync(["node", "test", "review-check", "--dry-run"]);
 
     const output = consoleSpy.mock.calls.map((c) => String(c[0])).join("\n");
     expect(output).toContain("app-1");
     expect(output).toContain("PR #10");
-    expect(output).toContain("CHANGES_REQUESTED");
+    expect(output).toContain("changes_requested");
     expect(output).toContain("dry run");
   });
 
@@ -220,8 +309,7 @@ describe("review-check command", () => {
 
     const output = consoleSpy.mock.calls.map((c) => String(c[0])).join("\n");
     expect(output).toContain("No pending review comments");
-    // gh should never be called since there's no PR
-    expect(mockGh).not.toHaveBeenCalled();
+    expect(mockRegistryGet).not.toHaveBeenCalled();
   });
 
   it("skips sessions with non-matching prefix", async () => {
@@ -249,12 +337,44 @@ describe("review-check command", () => {
       "branch=feat/fix\npr=https://github.com/org/my-app/pull/10\n",
     );
 
-    mockGh.mockResolvedValue(
-      JSON.stringify({
-        reviewDecision: null,
-        reviewThreads: { nodes: [{ isResolved: false }] },
-      }),
-    );
+    mockRegistryGet.mockImplementation((slot: string) => {
+      if (slot !== "scm") return null;
+      return {
+        name: "github",
+        detectPR: vi.fn().mockResolvedValue(null),
+        getPRState: vi.fn().mockResolvedValue("open"),
+        getPRSummary: vi.fn().mockResolvedValue({
+          state: "open",
+          title: "",
+          additions: 0,
+          deletions: 0,
+        }),
+        mergePR: vi.fn(),
+        closePR: vi.fn(),
+        getCIChecks: vi.fn().mockResolvedValue([]),
+        getCISummary: vi.fn().mockResolvedValue("none"),
+        getReviews: vi.fn().mockResolvedValue([]),
+        getReviewDecision: vi.fn().mockResolvedValue("none"),
+        getPendingComments: vi.fn().mockResolvedValue([
+          {
+            id: "1",
+            author: "reviewer",
+            body: "nit",
+            isResolved: false,
+            createdAt: new Date(),
+            url: "https://github.com/org/my-app/pull/10",
+          },
+        ]),
+        getAutomatedComments: vi.fn().mockResolvedValue([]),
+        getMergeability: vi.fn().mockResolvedValue({
+          mergeable: false,
+          ciPassing: true,
+          approved: false,
+          noConflicts: true,
+          blockers: ["review"],
+        }),
+      };
+    });
 
     await program.parseAsync(["node", "test", "review-check"]);
 
@@ -274,13 +394,41 @@ describe("review-check command", () => {
     expect(mockExec).toHaveBeenCalledWith("tmux", ["send-keys", "-t", "app-1", "Enter"]);
   });
 
-  it("handles gh returning null (API failure)", async () => {
+  it("handles scm failures gracefully", async () => {
     writeFileSync(
       join(sessionsDir, "app-1"),
       "branch=feat/fix\npr=https://github.com/org/my-app/pull/10\n",
     );
 
-    mockGh.mockResolvedValue(null);
+    mockRegistryGet.mockImplementation((slot: string) => {
+      if (slot !== "scm") return null;
+      return {
+        name: "github",
+        detectPR: vi.fn().mockResolvedValue(null),
+        getPRState: vi.fn().mockResolvedValue("open"),
+        getPRSummary: vi.fn().mockResolvedValue({
+          state: "open",
+          title: "",
+          additions: 0,
+          deletions: 0,
+        }),
+        mergePR: vi.fn(),
+        closePR: vi.fn(),
+        getCIChecks: vi.fn().mockResolvedValue([]),
+        getCISummary: vi.fn().mockResolvedValue("none"),
+        getReviews: vi.fn().mockResolvedValue([]),
+        getReviewDecision: vi.fn().mockRejectedValue(new Error("boom")),
+        getPendingComments: vi.fn().mockResolvedValue([]),
+        getAutomatedComments: vi.fn().mockResolvedValue([]),
+        getMergeability: vi.fn().mockResolvedValue({
+          mergeable: true,
+          ciPassing: true,
+          approved: false,
+          noConflicts: true,
+          blockers: [],
+        }),
+      };
+    });
 
     await program.parseAsync(["node", "test", "review-check"]);
 
@@ -288,18 +436,55 @@ describe("review-check command", () => {
     expect(output).toContain("No pending review comments");
   });
 
-  it("handles malformed GraphQL response gracefully", async () => {
+  it("treats pending comments as pending decision", async () => {
     writeFileSync(
       join(sessionsDir, "app-1"),
       "branch=feat/fix\npr=https://github.com/org/my-app/pull/10\n",
     );
 
-    mockGh.mockResolvedValue("not valid json {{{");
+    mockRegistryGet.mockImplementation((slot: string) => {
+      if (slot !== "scm") return null;
+      return {
+        name: "gitlab",
+        detectPR: vi.fn().mockResolvedValue(null),
+        getPRState: vi.fn().mockResolvedValue("open"),
+        getPRSummary: vi.fn().mockResolvedValue({
+          state: "open",
+          title: "",
+          additions: 0,
+          deletions: 0,
+        }),
+        mergePR: vi.fn(),
+        closePR: vi.fn(),
+        getCIChecks: vi.fn().mockResolvedValue([]),
+        getCISummary: vi.fn().mockResolvedValue("none"),
+        getReviews: vi.fn().mockResolvedValue([]),
+        getReviewDecision: vi.fn().mockResolvedValue("none"),
+        getPendingComments: vi.fn().mockResolvedValue([
+          {
+            id: "1",
+            author: "reviewer",
+            body: "please update",
+            isResolved: false,
+            createdAt: new Date(),
+            url: "https://gitlab.com/group/repo/-/merge_requests/10",
+          },
+        ]),
+        getAutomatedComments: vi.fn().mockResolvedValue([]),
+        getMergeability: vi.fn().mockResolvedValue({
+          mergeable: false,
+          ciPassing: true,
+          approved: false,
+          noConflicts: true,
+          blockers: ["review"],
+        }),
+      };
+    });
 
     await program.parseAsync(["node", "test", "review-check"]);
 
     const output = consoleSpy.mock.calls.map((c) => String(c[0])).join("\n");
-    expect(output).toContain("No pending review comments");
+    expect(output).toContain("pending");
   });
 
   it("rejects unknown project ID", async () => {

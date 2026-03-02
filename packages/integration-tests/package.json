@@ -7,16 +7,22 @@
   "scripts": {
     "test": "echo 'Skipped — run test:integration instead'",
     "test:integration": "vitest run --config vitest.config.ts",
+    "test:integration:vram": "vitest run --config vitest.config.ts src/epic-05-vram-waiting.integration.test.ts",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@composio/ao-core": "workspace:*",
     "@composio/ao-plugin-agent-claude-code": "workspace:*",
+    "@composio/ao-plugin-agent-coordinator": "workspace:*",
     "@composio/ao-plugin-agent-codex": "workspace:*",
     "@composio/ao-plugin-agent-aider": "workspace:*",
     "@composio/ao-plugin-agent-opencode": "workspace:*",
+    "@composio/ao-plugin-agent-reviewer": "workspace:*",
     "@composio/ao-plugin-runtime-tmux": "workspace:*",
     "@composio/ao-plugin-runtime-process": "workspace:*",
+    "@composio/ao-plugin-scm-gitlab": "workspace:*",
+    "@composio/ao-plugin-tracker-gitlab": "workspace:*",
     "@composio/ao-plugin-workspace-worktree": "workspace:*",
     "@composio/ao-plugin-workspace-clone": "workspace:*",
     "@composio/ao-plugin-tracker-linear": "workspace:*"
@@ -24,6 +30,7 @@
   "devDependencies": {
     "@composio/ao-plugin-notifier-desktop": "workspace:*",
     "@composio/ao-plugin-notifier-slack": "workspace:*",
+    "@composio/ao-plugin-notifier-telegram": "workspace:*",
     "@composio/ao-plugin-notifier-webhook": "workspace:*",
     "@composio/ao-plugin-notifier-composio": "workspace:*",
     "@composio/ao-plugin-terminal-iterm2": "workspace:*",

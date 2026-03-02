@@ -212,5 +212,8 @@ describe("BASE_AGENT_PROMPT", () => {
     expect(BASE_AGENT_PROMPT).toContain("Session Lifecycle");
     expect(BASE_AGENT_PROMPT).toContain("Git Workflow");
     expect(BASE_AGENT_PROMPT).toContain("PR Best Practices");
+    expect(BASE_AGENT_PROMPT).toContain("Completion Contract");
+    expect(BASE_AGENT_PROMPT).toContain("branch is pushed to remote");
+    expect(BASE_AGENT_PROMPT).toContain("PR/MR is created");
   });
 });

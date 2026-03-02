@@ -8,12 +8,32 @@
  */
 
 import type {
+  PluginConfigEntry,
   PluginSlot,
   PluginManifest,
   PluginModule,
   PluginRegistry,
   OrchestratorConfig,
 } from "./types.js";
+
+export type PluginRegistryWarningCode =
+  | "builtin-import-failed"
+  | "builtin-invalid-module"
+  | "configured-import-failed"
+  | "configured-invalid-module"
+  | "configured-slot-mismatch";
+
+export interface PluginRegistryWarning {
+  code: PluginRegistryWarningCode;
+  slot: PluginSlot;
+  moduleName: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+export interface PluginRegistryOptions {
+  onWarning?: (warning: PluginRegistryWarning) => void;
+}
 
 /** Map from "slot:name" → plugin instance */
 type PluginMap = Map<string, { manifest: PluginManifest; instance: unknown }>;
@@ -31,18 +51,23 @@ const BUILTIN_PLUGINS: Array<{ slot: PluginSlot; name: string; pkg: string }> = 
   { slot: "agent", name: "claude-code", pkg: "@composio/ao-plugin-agent-claude-code" },
   { slot: "agent", name: "codex", pkg: "@composio/ao-plugin-agent-codex" },
   { slot: "agent", name: "aider", pkg: "@composio/ao-plugin-agent-aider" },
+  { slot: "agent", name: "coordinator", pkg: "@composio/ao-plugin-agent-coordinator" },
+  { slot: "agent", name: "reviewer", pkg: "@composio/ao-plugin-agent-reviewer" },
   // Workspaces
   { slot: "workspace", name: "worktree", pkg: "@composio/ao-plugin-workspace-worktree" },
   { slot: "workspace", name: "clone", pkg: "@composio/ao-plugin-workspace-clone" },
   // Trackers
   { slot: "tracker", name: "github", pkg: "@composio/ao-plugin-tracker-github" },
+  { slot: "tracker", name: "gitlab", pkg: "@composio/ao-plugin-tracker-gitlab" },
   { slot: "tracker", name: "linear", pkg: "@composio/ao-plugin-tracker-linear" },
   // SCM
   { slot: "scm", name: "github", pkg: "@composio/ao-plugin-scm-github" },
+  { slot: "scm", name: "gitlab", pkg: "@composio/ao-plugin-scm-gitlab" },
   // Notifiers
   { slot: "notifier", name: "composio", pkg: "@composio/ao-plugin-notifier-composio" },
   { slot: "notifier", name: "desktop", pkg: "@composio/ao-plugin-notifier-desktop" },
   { slot: "notifier", name: "slack", pkg: "@composio/ao-plugin-notifier-slack" },
+  { slot: "notifier", name: "telegram", pkg: "@composio/ao-plugin-notifier-telegram" },
   { slot: "notifier", name: "webhook", pkg: "@composio/ao-plugin-notifier-webhook" },
   // Terminals
   { slot: "terminal", name: "iterm2", pkg: "@composio/ao-plugin-terminal-iterm2" },
@@ -59,8 +84,43 @@ function extractPluginConfig(
   return undefined;
 }
 
-export function createPluginRegistry(): PluginRegistry {
+function normalizePluginModule(mod: unknown): PluginModule | null {
+  if (!mod || typeof mod !== "object") {
+    return null;
+  }
+
+  const candidate = mod as Partial<PluginModule> & { default?: Partial<PluginModule> };
+  const direct = candidate.manifest && typeof candidate.create === "function" ? candidate : null;
+  if (direct) {
+    return direct as PluginModule;
+  }
+
+  const fallback = candidate.default;
+  if (fallback?.manifest && typeof fallback.create === "function") {
+    return fallback as PluginModule;
+  }
+
+  return null;
+}
+
+function parsePluginEntry(entry: PluginConfigEntry): { moduleName: string; config?: Record<string, unknown> } {
+  if (typeof entry === "string") {
+    return { moduleName: entry };
+  }
+
+  return {
+    moduleName: entry.module,
+    config: entry.config,
+  };
+}
+
+export function createPluginRegistry(options?: PluginRegistryOptions): PluginRegistry {
   const plugins: PluginMap = new Map();
+  const onWarning = options?.onWarning;
+
+  const emitWarning = (warning: PluginRegistryWarning): void => {
+    onWarning?.(warning);
+  };
 
   return {
     register(plugin: PluginModule, config?: Record<string, unknown>): void {
@@ -92,14 +152,30 @@ export function createPluginRegistry(): PluginRegistry {
       const doImport = importFn ?? ((pkg: string) => import(pkg));
       for (const builtin of BUILTIN_PLUGINS) {
         try {
-          const mod = (await doImport(builtin.pkg)) as PluginModule;
-          if (mod.manifest && typeof mod.create === "function") {
-            const pluginConfig = orchestratorConfig
-              ? extractPluginConfig(builtin.slot, builtin.name, orchestratorConfig)
-              : undefined;
-            this.register(mod, pluginConfig);
+          const imported = await doImport(builtin.pkg);
+          const mod = normalizePluginModule(imported);
+          if (!mod) {
+            emitWarning({
+              code: "builtin-invalid-module",
+              slot: builtin.slot,
+              moduleName: builtin.pkg,
+              message: `Built-in plugin module does not export a valid PluginModule: ${builtin.pkg}`,
+            });
+            continue;
           }
-        } catch {
+
+          const pluginConfig = orchestratorConfig
+            ? extractPluginConfig(builtin.slot, builtin.name, orchestratorConfig)
+            : undefined;
+          this.register(mod, pluginConfig);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          emitWarning({
+            code: "builtin-import-failed",
+            slot: builtin.slot,
+            moduleName: builtin.pkg,
+            message: `Failed to import built-in plugin module: ${builtin.pkg} (${message})`,
+          });
           // Plugin not installed — that's fine, only load what's available
         }
       }
@@ -112,8 +188,62 @@ export function createPluginRegistry(): PluginRegistry {
       // Load built-ins with orchestrator config so plugins receive their settings
       await this.loadBuiltins(config, importFn);
 
-      // Then, load any additional plugins specified in project configs
-      // (future: support npm package names and local file paths)
+      const configuredPlugins = config.plugins;
+      if (!configuredPlugins) {
+        return;
+      }
+
+      const doImport = importFn ?? ((pkg: string) => import(pkg));
+      for (const [slot, entries] of Object.entries(configuredPlugins) as Array<
+        [PluginSlot, PluginConfigEntry[] | undefined]
+      >) {
+        if (!entries || entries.length === 0) {
+          continue;
+        }
+
+        for (const entry of entries) {
+          const { moduleName, config: pluginConfig } = parsePluginEntry(entry);
+          try {
+            const imported = await doImport(moduleName);
+            const mod = normalizePluginModule(imported);
+            if (!mod) {
+              emitWarning({
+                code: "configured-invalid-module",
+                slot,
+                moduleName,
+                message: `Configured plugin module does not export a valid PluginModule: ${moduleName}`,
+              });
+              continue;
+            }
+
+            if (mod.manifest.slot !== slot) {
+              emitWarning({
+                code: "configured-slot-mismatch",
+                slot,
+                moduleName,
+                message:
+                  `Configured plugin slot mismatch for module ${moduleName}: ` +
+                  `declared=${slot}, manifest=${mod.manifest.slot}`,
+                details: {
+                  declaredSlot: slot,
+                  manifestSlot: mod.manifest.slot,
+                },
+              });
+              continue;
+            }
+            this.register(mod, pluginConfig);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            emitWarning({
+              code: "configured-import-failed",
+              slot,
+              moduleName,
+              message: `Failed to import configured plugin module: ${moduleName} (${message})`,
+            });
+            // Optional external plugin failed to load — continue startup
+          }
+        }
+      }
     },
   };
 }

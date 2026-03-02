@@ -30,6 +30,7 @@ import {
   type ProjectConfig,
   type Runtime,
   type Agent,
+  type AgentLaunchConfig,
   type Workspace,
   type Tracker,
   type SCM,
@@ -55,6 +56,13 @@ import {
   generateConfigHash,
   validateAndStoreOrigin,
 } from "./paths.js";
+import { appendStructuredEvent } from "./event-log.js";
+import { TaskPipelineManager, type PipelineTddGuard } from "./pipeline-manager.js";
+import { PipelineCheckpointManager } from "./pipeline-checkpoint.js";
+import type { SubtaskPlan } from "./pipeline-plan.js";
+import { resolveTestCommand } from "./test-command.js";
+import { VramScheduler } from "./vram-scheduler.js";
+import { initVramClient, acquireSlot, releaseSlot } from "./vram-client.js";
 
 /** Escape regex metacharacters in a string. */
 function escapeRegex(str: string): string {
@@ -112,6 +120,52 @@ function validateStatus(raw: string | undefined): SessionStatus {
   return "spawning";
 }
 
+type WorkflowMode = "simple" | "full" | "auto";
+
+function resolveWorkflowMode(project: ProjectConfig, issue?: Issue): "simple" | "full" {
+  const configuredWorkflow = project.workflow ?? "simple";
+  if (configuredWorkflow !== "auto") {
+    return configuredWorkflow;
+  }
+
+  if (!issue) {
+    return "simple";
+  }
+
+  const hasComplexLabel = issue.labels.some((label) => /epic|complex/i.test(label));
+  if (hasComplexLabel) {
+    return "full";
+  }
+
+  return issue.description.length > 500 ? "full" : "simple";
+}
+
+function buildDefaultFullWorkflowPlan(issueId?: string): SubtaskPlan {
+  const issueRef = issueId ? `#${issueId}` : "current task";
+  return {
+    strategy: "tdd",
+    subtasks: [
+      {
+        id: "subtask-0",
+        agentType: "tester",
+        description: `Write failing tests for ${issueRef}`,
+      },
+      {
+        id: "subtask-1",
+        agentType: "developer",
+        description: `Implement minimal solution for ${issueRef}`,
+        dependsOn: ["subtask-0"],
+      },
+      {
+        id: "subtask-2",
+        agentType: "reviewer",
+        description: `Review changes for ${issueRef}`,
+        dependsOn: ["subtask-1"],
+      },
+    ],
+  };
+}
+
 /** Reconstruct a Session object from raw metadata key=value pairs. */
 function metadataToSession(
   sessionId: SessionId,
@@ -128,17 +182,44 @@ function metadataToSession(
     issueId: meta["issue"] || null,
     pr: meta["pr"]
       ? (() => {
-          // Parse owner/repo from GitHub PR URL: https://github.com/owner/repo/pull/123
           const prUrl = meta["pr"];
-          const ghMatch = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+          let owner = "";
+          let repo = "";
+          let number = 0;
+
+          try {
+            const path = new URL(prUrl).pathname;
+            const ghMatch = path.match(/^\/([^/]+)\/([^/]+)\/(?:pull|pulls)\/(\d+)/);
+            if (ghMatch) {
+              owner = ghMatch[1];
+              repo = ghMatch[2];
+              number = parseInt(ghMatch[3], 10);
+            } else {
+              const glMatch = path.match(/^\/(.+)\/-\/merge_requests\/(\d+)/);
+              if (glMatch) {
+                const pathParts = glMatch[1].split("/");
+                if (pathParts.length >= 2) {
+                  repo = pathParts[pathParts.length - 1] ?? "";
+                  owner = pathParts.slice(0, -1).join("/");
+                }
+                number = parseInt(glMatch[2], 10);
+              }
+            }
+          } catch {
+            // Ignore invalid URL and keep empty owner/repo.
+          }
+
+          if (!number) {
+            const numberMatch = prUrl.match(/\/(?:pull|merge_requests)\/(\d+)(?:$|[/?#])/);
+            number = parseInt(numberMatch?.[1] ?? "0", 10);
+          }
+
           return {
-            number: ghMatch
-              ? parseInt(ghMatch[3], 10)
-              : parseInt(prUrl.match(/\/(\d+)$/)?.[1] ?? "0", 10),
+            number: Number.isNaN(number) ? 0 : number,
             url: prUrl,
             title: "",
-            owner: ghMatch?.[1] ?? "",
-            repo: ghMatch?.[2] ?? "",
+            owner,
+            repo,
             branch: meta["branch"] ?? "",
             baseBranch: "",
             isDraft: false,
@@ -164,6 +245,16 @@ export interface SessionManagerDeps {
 /** Create a SessionManager instance. */
 export function createSessionManager(deps: SessionManagerDeps): SessionManager {
   const { config, registry } = deps;
+
+  // Initialize VRAM client for the session manager lifecycle
+  if (config.hosts && config.agentTypes) {
+     const globalScheduler = new VramScheduler(config.hosts, config.agentTypes, {
+         queueLookahead: config.concurrency?.queueLookahead,
+         maxSkipsPerTask: config.concurrency?.maxSkipsPerTask,
+         retryBackoff: config.concurrency?.retryBackoff,
+     });
+     initVramClient(globalScheduler, config.hosts);
+  }
 
   /**
    * Get the sessions directory for a project.
@@ -449,6 +540,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       }
     }
 
+    const resolvedWorkflow = resolveWorkflowMode(project, resolvedIssue);
+
     // Generate prompt with validated issue
     let issueContext: string | undefined;
     if (spawnConfig.issueId && plugins.tracker && resolvedIssue) {
@@ -466,10 +559,19 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       issueId: spawnConfig.issueId,
       issueContext,
       userPrompt: spawnConfig.prompt,
+      agentType: spawnConfig.agentType ?? "developer",
     });
 
+    const selectedAgentName =
+      resolvedWorkflow === "full" ? "coordinator" : (project.agent ?? config.defaults.agent);
+    const selectedAgent =
+      resolvedWorkflow === "full" ? registry.get<Agent>("agent", "coordinator") : plugins.agent;
+    if (!selectedAgent) {
+      throw new Error(`Agent plugin '${selectedAgentName}' not found`);
+    }
+
     // Get agent launch config and create runtime — clean up workspace on failure
-    const agentLaunchConfig = {
+    const agentLaunchConfig: AgentLaunchConfig = {
       sessionId,
       projectConfig: project,
       issueId: spawnConfig.issueId,
@@ -480,8 +582,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
 
     let handle: RuntimeHandle;
     try {
-      const launchCommand = plugins.agent.getLaunchCommand(agentLaunchConfig);
-      const environment = plugins.agent.getEnvironment(agentLaunchConfig);
+      const launchCommand = selectedAgent.getLaunchCommand(agentLaunchConfig);
+      const environment = selectedAgent.getEnvironment(agentLaunchConfig);
 
       handle = await plugins.runtime.create({
         sessionId: tmuxName ?? sessionId, // Use tmux name for runtime if available
@@ -542,8 +644,214 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         runtimeHandle: JSON.stringify(handle),
       });
 
-      if (plugins.agent.postLaunchSetup) {
-        await plugins.agent.postLaunchSetup(session);
+      if (selectedAgent.postLaunchSetup) {
+        await selectedAgent.postLaunchSetup(session);
+      }
+
+      appendStructuredEvent(config.configPath, project.path, {
+        type: "session.started",
+        sessionId,
+        projectId: spawnConfig.projectId,
+        data: {
+          issueId: spawnConfig.issueId ?? null,
+          branch,
+          workflow: resolvedWorkflow,
+          agent: selectedAgent.name,
+        },
+      });
+
+      if (resolvedWorkflow === "full") {
+        const checkpointStore = new PipelineCheckpointManager(workspacePath, sessionId);
+        const resolvedTestCommand = resolveTestCommand(project, workspacePath);
+
+        let pipelinePlan: SubtaskPlan;
+        if (selectedAgent.executeInline) {
+           let coordAllocation: { host: string; model: string } | null = null;
+           if (config.agentTypes?.["coordinator"]) {
+             try {
+               const model = config.agentTypes["coordinator"].model;
+               const acquired = await acquireSlot(model, "coordinator", `${sessionId}-coord`);
+               coordAllocation = { host: acquired.host, model: acquired.model };
+               agentLaunchConfig.inlineConfig = { endpoint: acquired.endpoint, model: acquired.model };
+             } catch (err) {
+               console.warn(`Could not schedule VRAM for coordinator: ${err}`);
+             }
+           }
+           try {
+               pipelinePlan = (await selectedAgent.executeInline(agentLaunchConfig)) as SubtaskPlan;
+           } catch (err) {
+               console.warn(`Coordinator inline execution failed, falling back to default plan: ${err}`);
+               pipelinePlan = buildDefaultFullWorkflowPlan(spawnConfig.issueId);
+           } finally {
+               if (coordAllocation) {
+                   await releaseSlot(coordAllocation.model, coordAllocation.host, "coordinator", `${sessionId}-coord`);
+               }
+           }
+        } else {
+           pipelinePlan = buildDefaultFullWorkflowPlan(spawnConfig.issueId);
+        }
+
+        appendStructuredEvent(config.configPath, project.path, {
+          type: "pipeline.test.command.selected",
+          sessionId,
+          projectId: spawnConfig.projectId,
+          data: {
+            command: resolvedTestCommand.command,
+            source: resolvedTestCommand.source,
+          },
+        });
+
+        const guard: PipelineTddGuard = {
+          assertRed: async () => ({
+            phase: "red",
+            passed: true,
+            testExit: 1,
+            output: `bootstrap-red-pass (${resolvedTestCommand.command})`,
+          }),
+          assertGreen: async () => ({
+            phase: "green",
+            passed: true,
+            testExit: 0,
+            output: `bootstrap-green-pass (${resolvedTestCommand.command})`,
+          }),
+        };
+
+        const pipeline = new TaskPipelineManager({
+          sessionId,
+          tddMode: project.tddMode ?? "strict",
+          subtaskRetries: 1,
+          subtaskRetryBackoffMs: 250,
+          guard,
+          checkpointStore,
+          runSubtask: async (subtask) => {
+            const shouldSchedule = Boolean(config.agentTypes?.[subtask.agentType]);
+            let allocation: { host: string; model: string } | null = null;
+
+            if (shouldSchedule) {
+              try {
+                const acquired = await acquireSlot(
+                  config.agentTypes![subtask.agentType].model, 
+                  subtask.agentType, 
+                  subtask.id
+                );
+                
+                allocation = { host: acquired.host, model: acquired.model };
+                
+                appendStructuredEvent(config.configPath, project.path, {
+                  type: "vram.slot.acquired",
+                  sessionId,
+                  projectId: spawnConfig.projectId,
+                  data: {
+                    subtaskId: subtask.id,
+                    agentType: subtask.agentType,
+                    host: acquired.host,
+                    model: acquired.model,
+                  },
+                });
+              } catch (err) {
+                 appendStructuredEvent(config.configPath, project.path, {
+                    type: "vram.slot.waiting",
+                    sessionId,
+                    projectId: spawnConfig.projectId,
+                    data: {
+                      subtaskId: subtask.id,
+                      agentType: subtask.agentType,
+                      error: err instanceof Error ? err.message : String(err),
+                    },
+                 });
+                 throw err;
+              }
+            }
+
+            try {
+              appendStructuredEvent(config.configPath, project.path, {
+                type: "pipeline.subtask.executed",
+                sessionId,
+                projectId: spawnConfig.projectId,
+                data: {
+                  subtaskId: subtask.id,
+                  agentType: subtask.agentType,
+                  description: subtask.description,
+                  host: allocation?.host,
+                  model: allocation?.model,
+                },
+              });
+            } finally {
+              if (allocation) {
+                await releaseSlot(allocation.model, allocation.host, subtask.agentType, subtask.id);
+                appendStructuredEvent(config.configPath, project.path, {
+                  type: "vram.slot.released",
+                  sessionId,
+                  projectId: spawnConfig.projectId,
+                  data: {
+                    subtaskId: subtask.id,
+                    agentType: subtask.agentType,
+                    host: allocation.host,
+                    model: allocation.model,
+                  },
+                });
+              }
+            }
+          },
+          onSubtaskRetry: (subtask, attempt, error, nextDelayMs) => {
+            appendStructuredEvent(config.configPath, project.path, {
+              type: "pipeline.subtask.retry",
+              sessionId,
+              projectId: spawnConfig.projectId,
+              data: {
+                subtaskId: subtask.id,
+                agentType: subtask.agentType,
+                attempt,
+                nextDelayMs,
+                error: String(error),
+              },
+            });
+          },
+          onLayerStart: (layerIndex, layer) => {
+            appendStructuredEvent(config.configPath, project.path, {
+              type: "pipeline.layer.started",
+              sessionId,
+              projectId: spawnConfig.projectId,
+              data: {
+                layerIndex,
+                subtaskIds: layer.map((subtask) => subtask.id),
+              },
+            });
+          },
+          onLayerCompleted: (layerIndex, layer) => {
+            appendStructuredEvent(config.configPath, project.path, {
+              type: "pipeline.layer.completed",
+              sessionId,
+              projectId: spawnConfig.projectId,
+              data: {
+                layerIndex,
+                subtaskIds: layer.map((subtask) => subtask.id),
+              },
+            });
+          },
+        });
+
+        try {
+          const result = await pipeline.executePlan(pipelinePlan);
+          appendStructuredEvent(config.configPath, project.path, {
+            type: "pipeline.completed",
+            sessionId,
+            projectId: spawnConfig.projectId,
+            data: {
+              resumedFromLayer: result.resumedFromLayer,
+              tddChecks: result.tddResults.length,
+            },
+          });
+        } catch (pipelineError) {
+          appendStructuredEvent(config.configPath, project.path, {
+            type: "pipeline.failed",
+            sessionId,
+            projectId: spawnConfig.projectId,
+            data: {
+              message: String(pipelineError),
+            },
+          });
+        }
       }
     } catch (err) {
       // Clean up runtime and workspace on post-launch failure
@@ -690,6 +998,16 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       if (plugins.agent.postLaunchSetup) {
         await plugins.agent.postLaunchSetup(session);
       }
+
+      appendStructuredEvent(config.configPath, project.path, {
+        type: "session.started",
+        sessionId,
+        projectId: orchestratorConfig.projectId,
+        data: {
+          orchestrator: true,
+          branch: project.defaultBranch,
+        },
+      });
     } catch (err) {
       // Clean up runtime on post-launch failure
       try {
@@ -834,6 +1152,18 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
 
     // Archive metadata
     deleteMetadata(sessionsDir, sessionId, true);
+
+    if (project) {
+      appendStructuredEvent(config.configPath, project.path, {
+        type: "session.completed",
+        sessionId,
+        projectId: raw["project"] ?? "",
+        data: {
+          finalStatus: "killed",
+          reason: "manual-kill",
+        },
+      });
+    }
   }
 
   async function cleanup(

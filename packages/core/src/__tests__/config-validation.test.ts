@@ -399,3 +399,312 @@ describe("Config Defaults", () => {
     expect(validated.projects.proj1.tracker).toEqual({ plugin: "github" });
   });
 });
+
+describe("Epic 1 alpha config compatibility", () => {
+  it("accepts project configured for GitLab tracker and SCM", () => {
+    const config = {
+      defaults: {
+        runtime: "process",
+        agent: "aider",
+        workspace: "worktree",
+        notifiers: ["telegram"],
+      },
+      projects: {
+        "test-project": {
+          path: "/repos/test-project",
+          repo: "group/test-project",
+          defaultBranch: "main",
+          sessionPrefix: "tst",
+          tracker: { plugin: "gitlab", url: "https://gitlab.example.com" },
+          scm: { plugin: "gitlab", url: "https://gitlab.example.com" },
+          agentConfig: { model: "qwen3-coder-30b", permissions: "skip" },
+        },
+      },
+      notifiers: {
+        telegram: {
+          plugin: "telegram",
+          token: "test-token",
+          chatId: "123456",
+        },
+      },
+      notificationRouting: {
+        urgent: ["telegram"],
+        action: ["telegram"],
+        warning: ["telegram"],
+        info: ["telegram"],
+      },
+    };
+
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+});
+
+describe("Epic 2 project workflow config", () => {
+  it("accepts workflow, tddMode, and testCmd in project config", () => {
+    const config = {
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+          workflow: "full",
+          tddMode: "warn",
+          testCmd: "pnpm test",
+        },
+      },
+    };
+
+    const validated = validateConfig(config);
+    expect(validated.projects.proj1.workflow).toBe("full");
+    expect(validated.projects.proj1.tddMode).toBe("warn");
+    expect(validated.projects.proj1.testCmd).toBe("pnpm test");
+  });
+
+  it("applies defaults for workflow and tddMode", () => {
+    const config = {
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    const validated = validateConfig(config);
+    expect(validated.projects.proj1.workflow).toBe("simple");
+    expect(validated.projects.proj1.tddMode).toBe("strict");
+  });
+
+  it("rejects invalid workflow and tddMode values", () => {
+    const invalidWorkflow = {
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+          workflow: "invalid",
+        },
+      },
+    };
+
+    const invalidTddMode = {
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+          tddMode: "invalid",
+        },
+      },
+    };
+
+    expect(() => validateConfig(invalidWorkflow)).toThrow();
+    expect(() => validateConfig(invalidTddMode)).toThrow();
+  });
+});
+
+describe("Epic 3 VRAM host budget validation", () => {
+  it("accepts host config when model budget fits totalVramGb", () => {
+    const config = {
+      hosts: {
+        local: {
+          address: "localhost",
+          totalVramGb: 128,
+          models: {
+            "gpt-oss-120": {
+              endpoint: "http://localhost:8082/v1",
+              vramGb: 60,
+              maxSlots: 1,
+            },
+            "qwen3-coder-30b-a3b": {
+              endpoint: "http://localhost:8081/v1",
+              vramGb: 18,
+              maxSlots: 2,
+            },
+          },
+        },
+      },
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it("rejects host config when allocated VRAM exceeds totalVramGb", () => {
+    const config = {
+      hosts: {
+        local: {
+          address: "localhost",
+          totalVramGb: 64,
+          models: {
+            "gpt-oss-120": {
+              endpoint: "http://localhost:8082/v1",
+              vramGb: 60,
+              maxSlots: 1,
+            },
+            "qwen3-coder-30b-a3b": {
+              endpoint: "http://localhost:8081/v1",
+              vramGb: 18,
+              maxSlots: 2,
+            },
+          },
+        },
+      },
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    expect(() => validateConfig(config)).toThrow(/allocated VRAM .* exceeds totalVramGb/i);
+  });
+
+  it("allows hosts without totalVramGb (no explicit budget)", () => {
+    const config = {
+      hosts: {
+        remote: {
+          address: "192.168.1.50",
+          models: {
+            "qwen3-coder-next-80b": {
+              endpoint: "http://192.168.1.50:8080/v1",
+              vramGb: 47,
+              maxSlots: 1,
+            },
+          },
+        },
+      },
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+});
+
+describe("Epic 5 concurrency config", () => {
+  it("applies default concurrency values when not specified", () => {
+    const config = {
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    const validated = validateConfig(config);
+    expect(validated.concurrency?.queueLookahead).toBe(5);
+    expect(validated.concurrency?.maxSkipsPerTask).toBe(2);
+    expect(validated.concurrency?.retryBackoff).toBe(30);
+  });
+
+  it("accepts custom concurrency values", () => {
+    const config = {
+      concurrency: {
+        queueLookahead: 3,
+        maxSkipsPerTask: 4,
+        retryBackoff: 15,
+      },
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    const validated = validateConfig(config);
+    expect(validated.concurrency?.queueLookahead).toBe(3);
+    expect(validated.concurrency?.maxSkipsPerTask).toBe(4);
+    expect(validated.concurrency?.retryBackoff).toBe(15);
+  });
+
+  it("rejects invalid concurrency values", () => {
+    const config = {
+      concurrency: {
+        queueLookahead: -1,
+        maxSkipsPerTask: 0,
+        retryBackoff: 0,
+      },
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    expect(() => validateConfig(config)).toThrow();
+  });
+});
+
+describe("Epic 6 plugins config", () => {
+  it("accepts plugin declarations as strings and object entries", () => {
+    const config = {
+      plugins: {
+        runtime: ["custom-runtime-plugin"],
+        notifier: [
+          {
+            module: "custom-notifier-plugin",
+            config: {
+              endpoint: "https://example.test/webhook",
+            },
+          },
+        ],
+      },
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    const validated = validateConfig(config);
+    expect(validated.plugins?.runtime?.[0]).toBe("custom-runtime-plugin");
+    expect(
+      typeof validated.plugins?.notifier?.[0] === "object" &&
+        (validated.plugins?.notifier?.[0] as { module?: string }).module,
+    ).toBe("custom-notifier-plugin");
+  });
+
+  it("rejects plugin object entry when module is missing", () => {
+    const config = {
+      plugins: {
+        runtime: [
+          {
+            config: { any: true },
+          },
+        ],
+      },
+      projects: {
+        proj1: {
+          path: "/repos/test",
+          repo: "org/test",
+          defaultBranch: "main",
+        },
+      },
+    };
+
+    expect(() => validateConfig(config)).toThrow();
+  });
+});

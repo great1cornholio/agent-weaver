@@ -9,6 +9,7 @@ import {
   type PluginModule,
   type RuntimeHandle,
   type Session,
+  CompletionDetector
 } from "@composio/ao-core";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -22,9 +23,6 @@ const execFileAsync = promisify(execFile);
 // Aider Activity Detection Helpers
 // =============================================================================
 
-/**
- * Check if Aider has made recent commits (within last 60 seconds).
- */
 async function hasRecentCommits(workspacePath: string): Promise<boolean> {
   try {
     const { stdout } = await execFileAsync(
@@ -38,9 +36,6 @@ async function hasRecentCommits(workspacePath: string): Promise<boolean> {
   }
 }
 
-/**
- * Get modification time of Aider chat history file.
- */
 async function getChatHistoryMtime(workspacePath: string): Promise<Date | null> {
   try {
     const chatFile = join(workspacePath, ".aider.chat.history.md");
@@ -53,62 +48,45 @@ async function getChatHistoryMtime(workspacePath: string): Promise<Date | null> 
 }
 
 // =============================================================================
-// Plugin Manifest
+// Plugin Definition
 // =============================================================================
 
 export const manifest = {
   name: "aider",
   slot: "agent" as const,
-  description: "Agent plugin: Aider",
+  description: "Agent plugin: Aider (aider.chat)",
   version: "0.1.0",
 };
 
-// =============================================================================
-// Agent Implementation
-// =============================================================================
+export function createAiderAgent(): Agent {
+  // Store detectors keyed by session id to preserve state across calls
+  const detectors = new Map<string, CompletionDetector>();
 
-function createAiderAgent(): Agent {
   return {
     name: "aider",
     processName: "aider",
 
     getLaunchCommand(config: AgentLaunchConfig): string {
-      const parts: string[] = ["aider"];
-
-      if (config.permissions === "skip") {
-        parts.push("--yes");
-      }
-
-      if (config.model) {
-        parts.push("--model", shellEscape(config.model));
-      }
-
-      if (config.systemPromptFile) {
-        parts.push("--system-prompt", `"$(cat ${shellEscape(config.systemPromptFile)})"`);
-      } else if (config.systemPrompt) {
-        parts.push("--system-prompt", shellEscape(config.systemPrompt));
-      }
-
+      const args: string[] = ["aider", "--yes-always", "--yes", "--auto-commits", "--no-show-model-warnings"];
       if (config.prompt) {
-        parts.push("--message", shellEscape(config.prompt));
+        args.push("--message", shellEscape(config.prompt));
       }
-
-      return parts.join(" ");
+      return args.join(" ");
     },
 
-    getEnvironment(config: AgentLaunchConfig): Record<string, string> {
+    getEnvironment(_config: AgentLaunchConfig): Record<string, string> {
       const env: Record<string, string> = {};
-      env["AO_SESSION_ID"] = config.sessionId;
-      // NOTE: AO_PROJECT_ID is the caller's responsibility (spawn.ts sets it)
-      if (config.issueId) {
-        env["AO_ISSUE_ID"] = config.issueId;
+      const keys = ["AIDER_MODEL", "OPENAI_API_KEY", "OPENAI_API_BASE", "ANTHROPIC_API_KEY"];
+      for (const k of keys) {
+        if (process.env[k]) {
+          env[k] = process.env[k]!;
+        }
       }
       return env;
     },
 
     detectActivity(terminalOutput: string): ActivityState {
       if (!terminalOutput.trim()) return "idle";
-      // Aider doesn't have rich terminal output patterns yet
       return "active";
     },
 
@@ -117,28 +95,51 @@ function createAiderAgent(): Agent {
       readyThresholdMs?: number,
     ): Promise<ActivityDetection | null> {
       const threshold = readyThresholdMs ?? DEFAULT_READY_THRESHOLD_MS;
+      const workspacePath = session.workspacePath;
+      if (!workspacePath) return null;
 
-      // Check if process is running first
+      // Ensure detector exists for this session
+      let detector = detectors.get(session.id);
+      if (!detector) {
+        detector = new CompletionDetector(workspacePath, 3600000, "developer");
+        detectors.set(session.id, detector);
+      }
+
       const exitedAt = new Date();
-      if (!session.runtimeHandle) return { state: "exited", timestamp: exitedAt };
-      const running = await this.isProcessRunning(session.runtimeHandle);
-      if (!running) return { state: "exited", timestamp: exitedAt };
+      let running = false;
+      if (session.runtimeHandle) {
+         running = await this.isProcessRunning(session.runtimeHandle);
+      }
 
-      // Process is running - check for activity signals
-      if (!session.workspacePath) return null;
+      if (!running && session.runtimeHandle) {
+         // Fake exit code 0 or 1 roughly based on last state could be used here. 
+         // Since aider doesn't easily expose exit code via tmux we assume 0 for completion checks.
+         detector.onProcessExit(0);
+         const res = detector.evaluate();
+         if (res.status === "completed") {
+            // Can be mapped to exited but normally orchestrator picks it up
+         }
+         return { state: "exited", timestamp: exitedAt };
+      }
 
-      // Check for recent git commits (Aider auto-commits changes)
-      const hasCommits = await hasRecentCommits(session.workspacePath);
+      // 1) Evaluate state through completion detector signals
+      const hasCommitsFast = await detector.checkGitDiff();
+      const res = detector.evaluate();
+      
+      if (res.status === "completed") {
+         return { state: "exited", timestamp: new Date() };
+      }
+
+      // Fallback heuristics:
+
+      const hasCommits = await hasRecentCommits(workspacePath);
       if (hasCommits) return { state: "active" };
 
-      // Check chat history file modification time
-      const chatMtime = await getChatHistoryMtime(session.workspacePath);
+      const chatMtime = await getChatHistoryMtime(workspacePath);
       if (!chatMtime) {
-        // No chat history — cannot determine activity
         return null;
       }
 
-      // Classify by age: <30s active, <threshold ready, >threshold idle
       const ageMs = Date.now() - chatMtime.getTime();
       const activeWindowMs = Math.min(30_000, threshold);
       if (ageMs < activeWindowMs) return { state: "active", timestamp: chatMtime };
@@ -152,7 +153,7 @@ function createAiderAgent(): Agent {
           const { stdout: ttyOut } = await execFileAsync(
             "tmux",
             ["list-panes", "-t", handle.id, "-F", "#{pane_tty}"],
-            { timeout: 30_000 },
+            { timeout: 5_000 },
           );
           const ttys = ttyOut
             .trim()
@@ -198,15 +199,10 @@ function createAiderAgent(): Agent {
     },
 
     async getSessionInfo(_session: Session): Promise<AgentSessionInfo | null> {
-      // Aider doesn't have JSONL session files for introspection yet
       return null;
     },
   };
 }
-
-// =============================================================================
-// Plugin Export
-// =============================================================================
 
 export function create(): Agent {
   return createAiderAgent();

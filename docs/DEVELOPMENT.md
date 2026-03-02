@@ -275,7 +275,23 @@ gitleaks detect
 
 3. **Create src/index.ts** (see plugin pattern above)
 
-4. **Register in core** (`packages/core/src/services/plugin-registry.ts`)
+4. **Configure plugin loading in `agent-orchestrator.yaml`**
+
+    ```yaml
+    plugins:
+       runtime:
+          - "@composio/ao-plugin-runtime-myplugin"
+    ```
+
+    For inline plugin config:
+
+    ```yaml
+    plugins:
+       runtime:
+          - module: "@composio/ao-plugin-runtime-myplugin"
+             config:
+                timeoutMs: 30000
+    ```
 
 5. **Add tests** (`src/index.test.ts`)
 
@@ -284,6 +300,24 @@ gitleaks detect
    pnpm --filter @composio/ao-runtime-myplugin build
    pnpm --filter @composio/ao-runtime-myplugin test
    ```
+
+### Loading External Plugins
+
+`plugin-registry` loads built-ins first, then reads optional `plugins.<slot>[]` entries from config.
+
+- Entry as string: treated as module name/path
+- Entry as object: uses `module` and passes `config` to `create(config)`
+- Slot mismatch safety: if declared slot and `manifest.slot` differ, plugin is ignored
+
+Example:
+
+```yaml
+plugins:
+   notifier:
+      - module: "./dist/plugins/notifier-myteam/index.js"
+         config:
+            channel: "eng-alerts"
+```
 
 ### Updating Interfaces
 

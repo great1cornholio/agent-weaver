@@ -58,6 +58,32 @@ const AgentSpecificConfigSchema = z
   })
   .passthrough();
 
+const HostModelConfigSchema = z.object({
+  endpoint: z.string(),
+  vramGb: z.number().positive(),
+  maxSlots: z.number().int().positive(),
+  contextWindow: z.number().int().positive().optional(),
+  file: z.string().optional(),
+});
+
+const HostConfigSchema = z.object({
+  address: z.string(),
+  totalVramGb: z.number().positive().optional(),
+  healthCheck: z.string().optional(),
+  auth: z
+    .object({
+      type: z.string(),
+      token: z.string(),
+    })
+    .optional(),
+  models: z.record(HostModelConfigSchema),
+});
+
+const AgentTypeConfigSchema = z.object({
+  model: z.string(),
+  maxConcurrentPerHost: z.number().int().positive().optional(),
+});
+
 const ProjectConfigSchema = z.object({
   name: z.string().optional(),
   repo: z.string(),
@@ -75,6 +101,9 @@ const ProjectConfigSchema = z.object({
   symlinks: z.array(z.string()).optional(),
   postCreate: z.array(z.string()).optional(),
   agentConfig: AgentSpecificConfigSchema.default({}),
+  workflow: z.enum(["simple", "full", "auto"]).default("simple"),
+  tddMode: z.enum(["strict", "warn", "off"]).default("strict"),
+  testCmd: z.string().optional(),
   reactions: z.record(ReactionConfigSchema.partial()).optional(),
   agentRules: z.string().optional(),
   agentRulesFile: z.string().optional(),
@@ -88,12 +117,42 @@ const DefaultPluginsSchema = z.object({
   notifiers: z.array(z.string()).default(["composio", "desktop"]),
 });
 
+const ConcurrencyConfigSchema = z.object({
+  queueLookahead: z.number().int().nonnegative().default(5),
+  maxSkipsPerTask: z.number().int().positive().default(2),
+  retryBackoff: z.number().int().positive().default(30),
+});
+
+const PluginConfigEntrySchema = z.union([
+  z.string(),
+  z.object({
+    module: z.string(),
+    config: z.record(z.unknown()).optional(),
+  }),
+]);
+
+const PluginOverridesSchema = z
+  .object({
+    runtime: z.array(PluginConfigEntrySchema).optional(),
+    agent: z.array(PluginConfigEntrySchema).optional(),
+    workspace: z.array(PluginConfigEntrySchema).optional(),
+    tracker: z.array(PluginConfigEntrySchema).optional(),
+    scm: z.array(PluginConfigEntrySchema).optional(),
+    notifier: z.array(PluginConfigEntrySchema).optional(),
+    terminal: z.array(PluginConfigEntrySchema).optional(),
+  })
+  .default({});
+
 const OrchestratorConfigSchema = z.object({
   port: z.number().default(3000),
   terminalPort: z.number().optional(),
   directTerminalPort: z.number().optional(),
   readyThresholdMs: z.number().nonnegative().default(300_000),
   defaults: DefaultPluginsSchema.default({}),
+  concurrency: ConcurrencyConfigSchema.default({}),
+  plugins: PluginOverridesSchema.optional(),
+  hosts: z.record(HostConfigSchema).optional(),
+  agentTypes: z.record(AgentTypeConfigSchema).optional(),
   projects: z.record(ProjectConfigSchema),
   notifiers: z.record(NotifierConfigSchema).default({}),
   notificationRouting: z.record(z.array(z.string())).default({
@@ -104,6 +163,29 @@ const OrchestratorConfigSchema = z.object({
   }),
   reactions: z.record(ReactionConfigSchema).default({}),
 });
+
+function validateVramBudgets(config: OrchestratorConfig): void {
+  if (!config.hosts) {
+    return;
+  }
+
+  for (const [hostName, host] of Object.entries(config.hosts)) {
+    const hostLimit = host.totalVramGb;
+    if (hostLimit === undefined) {
+      continue;
+    }
+
+    const allocated = Object.values(host.models).reduce((sum, model) => {
+      return sum + model.vramGb * model.maxSlots;
+    }, 0);
+
+    if (allocated > hostLimit) {
+      throw new Error(
+        `Host ${hostName}: allocated VRAM ${allocated}GB exceeds totalVramGb ${hostLimit}GB`,
+      );
+    }
+  }
+}
 
 // =============================================================================
 // CONFIG LOADING
@@ -218,7 +300,7 @@ function applyDefaultReactions(config: OrchestratorConfig): OrchestratorConfig {
       auto: true,
       action: "send-to-agent",
       message:
-        "CI is failing on your PR. Run `gh pr checks` to see the failures, fix them, and push.",
+        "CI is failing on your Pull/Merge Request. Use the appropriate CLI tool (like `gh` or `glab`) to check the pipeline failures, fix them locally, and push the changes.",
       retries: 2,
       escalateAfter: 2,
     },
@@ -226,13 +308,13 @@ function applyDefaultReactions(config: OrchestratorConfig): OrchestratorConfig {
       auto: true,
       action: "send-to-agent",
       message:
-        "There are review comments on your PR. Check with `gh pr view --comments` and `gh api` for inline comments. Address each one, push fixes, and reply.",
+        "Review comments require changes on your Pull/Merge Request. Fetch the inline review comments using the appropriate CLI tool (`gh pr view` or `glab mr view`), address each issue, push the fixes, and resolve the threads.",
       escalateAfter: "30m",
     },
     "bugbot-comments": {
       auto: true,
       action: "send-to-agent",
-      message: "Automated review comments found on your PR. Fix the issues flagged by the bot.",
+      message: "Automated review comments found on your PR/MR. Fix the issues flagged by the bot.",
       escalateAfter: "30m",
     },
     "merge-conflicts": {
@@ -252,6 +334,18 @@ function applyDefaultReactions(config: OrchestratorConfig): OrchestratorConfig {
       action: "notify",
       priority: "urgent",
       threshold: "10m",
+    },
+    "tdd-red-failed": {
+      auto: true,
+      action: "send-to-agent",
+      message: "TDD Guard: Tests did not fail in the Red phase. You must write tests that fail on current implementation before writing code. Please fix the tests.",
+      retries: 2,
+    },
+    "tdd-green-failed": {
+      auto: true,
+      action: "send-to-agent",
+      message: "TDD Guard: Tests failed in the Green phase. Your implementation did not make the tests pass. Please fix your code to pass the tests.",
+      retries: 2,
     },
     "agent-needs-input": {
       auto: true,
@@ -409,6 +503,7 @@ export function validateConfig(raw: unknown): OrchestratorConfig {
 
   // Validate project uniqueness and prefix collisions
   validateProjectUniqueness(config);
+  validateVramBudgets(config);
 
   return config;
 }

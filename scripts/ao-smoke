@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT="${1:-}"
+ISSUE="${2:-}"
+
+detect_first_project() {
+  local config_file="$1"
+  awk '
+    /^projects:/ { in_projects=1; next }
+    in_projects && /^[^[:space:]]/ { in_projects=0 }
+    in_projects && /^  [^[:space:]][^:]*:/ {
+      gsub(":", "", $1)
+      print $1
+      exit
+    }
+  ' "$config_file"
+}
+
+echo "[ao-smoke] Repository: $REPO_ROOT"
+
+if [[ -z "$PROJECT" ]]; then
+  if [[ -f "$REPO_ROOT/agent-orchestrator.yaml" ]]; then
+    PROJECT="$(detect_first_project "$REPO_ROOT/agent-orchestrator.yaml")"
+  fi
+fi
+
+if [[ -z "$PROJECT" ]]; then
+  echo "[ao-smoke] ERROR: Could not determine project ID."
+  echo "[ao-smoke] Usage: ./scripts/ao-smoke <project-id> [issue-id]"
+  exit 1
+fi
+
+echo "[ao-smoke] Building CLI"
+cd "$REPO_ROOT"
+pnpm --filter @composio/ao-cli build >/dev/null
+
+echo "[ao-smoke] Running help"
+node packages/cli/dist/index.js --help >/dev/null
+
+echo "[ao-smoke] Spawning session (project=$PROJECT${ISSUE:+, issue=$ISSUE})"
+if [[ -n "$ISSUE" ]]; then
+  SPAWN_OUTPUT="$(node packages/cli/dist/index.js spawn "$PROJECT" "$ISSUE" 2>&1)" || {
+    echo "$SPAWN_OUTPUT"
+    echo "[ao-smoke] FAIL: spawn command failed"
+    exit 1
+  }
+else
+  SPAWN_OUTPUT="$(node packages/cli/dist/index.js spawn "$PROJECT" 2>&1)" || {
+    echo "$SPAWN_OUTPUT"
+    echo "[ao-smoke] FAIL: spawn command failed"
+    exit 1
+  }
+fi
+
+echo "$SPAWN_OUTPUT"
+
+SESSION_ID="$(printf '%s\n' "$SPAWN_OUTPUT" | awk -F'=' '/^SESSION=/{print $2}' | tail -n1)"
+if [[ -z "$SESSION_ID" ]]; then
+  echo "[ao-smoke] FAIL: SESSION id not found in spawn output"
+  exit 1
+fi
+
+LOG_PATH="$(grep -Rsl -- "$SESSION_ID" ~/.agent-orchestrator ~/.ao-sessions 2>/dev/null | grep 'ao-events.jsonl' | head -n1 || true)"
+if [[ -z "$LOG_PATH" ]]; then
+  echo "[ao-smoke] FAIL: event log not found for session $SESSION_ID"
+  exit 1
+fi
+
+echo "[ao-smoke] Validating pipeline events in $LOG_PATH"
+EVENTS="$(tail -n 400 "$LOG_PATH" | jq -r --arg s "$SESSION_ID" 'select(.sessionId==$s) | .type')"
+
+for expected in session.started pipeline.layer.started pipeline.subtask.executed pipeline.layer.completed pipeline.completed; do
+  if ! printf '%s\n' "$EVENTS" | grep -q "^${expected}$"; then
+    echo "[ao-smoke] FAIL: missing event '$expected' for session $SESSION_ID"
+    exit 1
+  fi
+done
+
+echo "[ao-smoke] PASS: session $SESSION_ID emitted required pipeline events"

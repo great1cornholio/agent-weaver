@@ -1,14 +1,22 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createServer } from "node:net";
 
 import { Command } from "commander";
 import { parse as yamlParse } from "yaml";
 import { registerInit } from "../../src/commands/init.js";
+import { isPortAvailable } from "../../src/lib/web-dir.js";
+
+vi.mock("../../src/lib/web-dir.js", () => ({
+  isPortAvailable: vi.fn(),
+}));
 
 let tmpDir: string;
+
+beforeEach(() => {
+  vi.mocked(isPortAvailable).mockResolvedValue(true);
+});
 
 afterEach(() => {
   if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
@@ -63,32 +71,24 @@ describe("init command", () => {
     const outputPath = join(tmpDir, "agent-orchestrator.yaml");
 
     // Occupy port 3000
-    const blocker = createServer();
-    await new Promise<void>((resolve) => {
-      blocker.listen(3000, "127.0.0.1", () => resolve());
+    vi.mocked(isPortAvailable).mockImplementation(async (port) => {
+      if (port === 3000) return false;
+      return true;
     });
 
-    try {
-      const program = new Command();
-      program.exitOverride();
-      registerInit(program);
+    const program = new Command();
+    program.exitOverride();
+    registerInit(program);
 
-      vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
 
-      await program.parseAsync(["node", "test", "init", "--auto", "--output", outputPath]);
+    await program.parseAsync(["node", "test", "init", "--auto", "--output", outputPath]);
 
-      const content = readFileSync(outputPath, "utf-8");
-      // Should NOT be 3000 since we're occupying it
-      expect(content).not.toContain("port: 3000");
-      // Should pick 3001 (or higher if 3001 is also taken)
-      const portMatch = content.match(/port: (\d+)/);
-      expect(portMatch).toBeTruthy();
-      const port = parseInt(portMatch![1], 10);
-      expect(port).toBeGreaterThan(3000);
-      expect(port).toBeLessThan(3100);
-    } finally {
-      await new Promise<void>((resolve) => blocker.close(() => resolve()));
-    }
+    const content = readFileSync(outputPath, "utf-8");
+    // Should NOT be 3000 since we're occupying it
+    expect(content).not.toContain("port: 3000");
+    // Should pick 3001
+    expect(content).toContain("port: 3001");
   });
 
   it("auto mode tells user when default port is busy and which port it picked", async () => {

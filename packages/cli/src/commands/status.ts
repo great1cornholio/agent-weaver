@@ -20,8 +20,8 @@ import {
   reviewDecisionIcon,
   padCol,
 } from "../lib/format.js";
-import { getAgentByName, getSCM } from "../lib/plugins.js";
-import { getSessionManager } from "../lib/create-session-manager.js";
+import { getAgentByName } from "../lib/plugins.js";
+import { getPluginRegistry, getSessionManager } from "../lib/create-session-manager.js";
 
 interface SessionInfo {
   name: string;
@@ -39,6 +39,33 @@ interface SessionInfo {
   pendingThreads: number | null;
   activity: ActivityState | null;
 }
+
+const NOOP_SCM: SCM = {
+  name: "unknown",
+  detectPR: async () => null,
+  getPRState: async () => "open",
+  getPRSummary: async () => ({
+    state: "open",
+    title: "",
+    additions: 0,
+    deletions: 0,
+  }),
+  mergePR: async () => {},
+  closePR: async () => {},
+  getCIChecks: async () => [],
+  getCISummary: async () => "none",
+  getReviews: async () => [],
+  getReviewDecision: async () => "none",
+  getPendingComments: async () => [],
+  getAutomatedComments: async () => [],
+  getMergeability: async () => ({
+    mergeable: false,
+    ciPassing: false,
+    approved: false,
+    noConflicts: true,
+    blockers: ["SCM plugin unavailable"],
+  }),
+};
 
 async function gatherSessionInfo(
   session: Session,
@@ -83,7 +110,7 @@ async function gatherSessionInfo(
 
   // Extract PR number from metadata URL as fallback
   if (prUrl) {
-    const prMatch = /\/pull\/(\d+)/.exec(prUrl);
+    const prMatch = /\/(?:pull|merge_requests)\/(\d+)/.exec(prUrl);
     if (prMatch) {
       prNumber = parseInt(prMatch[1], 10);
     }
@@ -210,6 +237,7 @@ export function registerStatus(program: Command): void {
 
       // Use session manager to list sessions (metadata-based, not tmux-based)
       const sm = await getSessionManager(config);
+      const registry = await getPluginRegistry(config);
       const sessions = await sm.list(opts.project);
 
       if (!opts.json) {
@@ -240,8 +268,9 @@ export function registerStatus(program: Command): void {
 
         // Resolve agent and SCM for this project
         const agentName = projectConfig.agent ?? config.defaults.agent;
-        const agent = getAgentByName(agentName);
-        const scm = getSCM(config, projectId);
+        const agent = registry.get<Agent>("agent", agentName) ?? getAgentByName("claude-code");
+        const scmName = projectConfig.scm?.plugin ?? "github";
+        const scm = registry.get<SCM>("scm", scmName);
 
         if (!opts.json) {
           console.log(header(projectConfig.name || projectId));
@@ -259,6 +288,24 @@ export function registerStatus(program: Command): void {
 
         if (!opts.json) {
           printTableHeader();
+        }
+
+        if (!scm) {
+          for (const session of projectSessions) {
+            const info = await gatherSessionInfo(session, agent, NOOP_SCM, config);
+
+            if (opts.json) {
+              jsonOutput.push(info);
+            } else {
+              printSessionRow(info);
+            }
+          }
+
+          if (!opts.json) {
+            console.log(chalk.yellow(`  SCM plugin unavailable for project (${scmName}); PR/CI/review data skipped.`));
+            console.log();
+          }
+          continue;
         }
 
         // Gather all session info in parallel

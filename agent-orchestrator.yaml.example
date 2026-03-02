@@ -22,6 +22,80 @@ defaults:
   workspace: worktree     # worktree | clone | copy
   notifiers: [desktop]    # desktop | slack | discord | webhook | email
 
+# Optional external plugins loaded at startup (Epic 6)
+# Each entry can be a module string or an object with inline config.
+# plugins:
+#   runtime:
+#     - "@acme/ao-plugin-runtime-remote"
+#   notifier:
+#     - module: "@acme/ao-plugin-notifier-teams"
+#       config:
+#         webhook: ${TEAMS_WEBHOOK_URL}
+#   tracker:
+#     - "./dist/plugins/tracker-custom/index.js"
+
+# ── Inference Hosts (Section 5A.4 from spec) ──
+# VRAM slot limits are PER HOST --- not global.
+hosts:
+  local:                       # "full-stack" profile
+    address: localhost
+    totalVramGb: 128          # AMD Strix Halo (128 GB Unified RAM)
+    healthCheck: http://localhost:8080/health
+    models:                   # 60 + 18×2 = 96 GB (32 GB buffer)
+      gpt-oss-120:
+        file: gpt-oss-120-q4_k_xl.gguf
+        endpoint: http://localhost:8082/v1
+        vramGb: 60
+        maxSlots: 1
+        contextWindow: 65536
+      qwen3-coder-30b-a3b:
+        file: qwen3-coder-30b-a3b-q4_k_m.gguf
+        endpoint: http://localhost:8081/v1
+        vramGb: 18
+        maxSlots: 2
+        contextWindow: 32768
+  
+  gpu-server:                  # "dev-heavy" profile
+    address: 192.168.1.50
+    totalVramGb: 128          
+    healthCheck: http://192.168.1.50:8080/health
+    auth:
+      type: bearer
+      token: ${GPU_SERVER_TOKEN}
+    models:                   # 47 + 18×2 = 83 GB
+      qwen3-coder-next-80b:
+        endpoint: http://192.168.1.50:8080/v1
+        vramGb: 47
+        maxSlots: 1
+        contextWindow: 32768
+      qwen3-coder-30b-a3b:
+        endpoint: http://192.168.1.50:8081/v1
+        vramGb: 18
+        maxSlots: 2
+        contextWindow: 32768
+
+# ── Agent Types and Model Assignment (Section 5A) ──
+# model = model name; scheduler will find a host with a free slot
+agentTypes:
+  coordinator:
+    model: gpt-oss-120          # local: 1 slot
+    maxConcurrentPerHost: 1
+  developer:
+    model: qwen3-coder-30b-a3b  # local: 2, gpu-server: 2 = 4 total
+    maxConcurrentPerHost: 1     # = max 2 simultaneously (1 per host)
+  reviewer:
+    model: qwen3-coder-next-80b # gpu-server: 1 slot
+    maxConcurrentPerHost: 1
+  tester:
+    model: qwen3-coder-30b-a3b  # local: 2, gpu-server: 2 = 4 total
+    maxConcurrentPerHost: 1
+
+# ── Concurrency (Section 5A.3) ──
+concurrency:
+  mode: parallel              # parallel | serial | auto
+  queueSize: 20               # max tasks in queue
+  queueStrategy: priority     # priority | fifo
+
 # Projects — at minimum, specify repo and path
 projects:
   my-app:

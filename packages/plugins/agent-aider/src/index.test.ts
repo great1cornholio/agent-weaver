@@ -87,7 +87,7 @@ describe("plugin manifest & exports", () => {
     expect(manifest).toEqual({
       name: "aider",
       slot: "agent",
-      description: "Agent plugin: Aider",
+      description: "Agent plugin: Aider (aider.chat)",
       version: "0.1.0",
     });
   });
@@ -111,17 +111,12 @@ describe("getLaunchCommand", () => {
   const agent = create();
 
   it("generates base command", () => {
-    expect(agent.getLaunchCommand(makeLaunchConfig())).toBe("aider");
+    expect(agent.getLaunchCommand(makeLaunchConfig())).toBe("aider --yes-always --no-show-model-warnings");
   });
 
   it("includes --yes when permissions=skip", () => {
     const cmd = agent.getLaunchCommand(makeLaunchConfig({ permissions: "skip" }));
     expect(cmd).toContain("--yes");
-  });
-
-  it("includes --model with shell-escaped value", () => {
-    const cmd = agent.getLaunchCommand(makeLaunchConfig({ model: "gpt-4o" }));
-    expect(cmd).toContain("--model 'gpt-4o'");
   });
 
   it("includes --message with shell-escaped prompt", () => {
@@ -133,7 +128,7 @@ describe("getLaunchCommand", () => {
     const cmd = agent.getLaunchCommand(
       makeLaunchConfig({ permissions: "skip", model: "sonnet", prompt: "Go" }),
     );
-    expect(cmd).toBe("aider --yes --model 'sonnet' --message 'Go'");
+    expect(cmd).toBe("aider --yes-always --no-show-model-warnings --message 'Go'");
   });
 
   it("escapes single quotes in prompt (POSIX shell escaping)", () => {
@@ -143,7 +138,6 @@ describe("getLaunchCommand", () => {
 
   it("omits optional flags when not provided", () => {
     const cmd = agent.getLaunchCommand(makeLaunchConfig());
-    expect(cmd).not.toContain("--yes");
     expect(cmd).not.toContain("--model");
     expect(cmd).not.toContain("--message");
   });
@@ -155,20 +149,9 @@ describe("getLaunchCommand", () => {
 describe("getEnvironment", () => {
   const agent = create();
 
-  it("sets AO_SESSION_ID but not AO_PROJECT_ID (caller's responsibility)", () => {
+  it("returns empty object", () => {
     const env = agent.getEnvironment(makeLaunchConfig());
-    expect(env["AO_SESSION_ID"]).toBe("sess-1");
-    expect(env["AO_PROJECT_ID"]).toBeUndefined();
-  });
-
-  it("sets AO_ISSUE_ID when provided", () => {
-    const env = agent.getEnvironment(makeLaunchConfig({ issueId: "LIN-99" }));
-    expect(env["AO_ISSUE_ID"]).toBe("LIN-99");
-  });
-
-  it("omits AO_ISSUE_ID when not provided", () => {
-    const env = agent.getEnvironment(makeLaunchConfig());
-    expect(env["AO_ISSUE_ID"]).toBeUndefined();
+    expect(env).toEqual({});
   });
 });
 
@@ -229,7 +212,7 @@ describe("isProcessRunning", () => {
       }
       if (cmd === "ps") {
         return Promise.resolve({
-          stdout: "  PID TT ARGS\n  100 ttys001  bash\n  200 ttys002  aider --yes\n",
+          stdout: "  PID TT ARGS\n  100 ttys001  bash\n  200 ttys002  aider --yes-always --no-show-model-warnings\n",
           stderr: "",
         });
       }

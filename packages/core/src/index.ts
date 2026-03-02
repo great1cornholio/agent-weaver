@@ -79,3 +79,49 @@ export {
   expandHome,
   validateAndStoreOrigin,
 } from "./paths.js";
+
+// Structured event logging (Epic 1)
+export { appendStructuredEvent, getEventLogPath } from "./event-log.js";
+export type { StructuredEventLogEntry } from "./event-log.js";
+
+// Epic 2 core pipeline primitives
+export {
+  validateSubtaskPlan,
+  topologicalSortSubtasks,
+  buildExecutionLayers,
+} from "./pipeline-plan.js";
+export type { Subtask, SubtaskPlan, PipelineAgentType } from "./pipeline-plan.js";
+export { TaskPipelineManager } from "./pipeline-manager.js";
+export type {
+  TddMode,
+  TddGuardResult,
+  PipelineTddGuard,
+  PipelineCheckpointState,
+  PipelineCheckpointStore,
+  TaskPipelineManagerOptions,
+  PipelineExecutionResult,
+} from "./pipeline-manager.js";
+export { PipelineCheckpointManager, hashSubtaskPlan } from "./pipeline-checkpoint.js";
+export type { PipelineCheckpoint, SubtaskCheckpointResult } from "./pipeline-checkpoint.js";
+
+// Test command resolution (Epic 3)
+export { resolveTestCommand } from "./test-command.js";
+export type { ResolvedTestCommand, TestCommandSource } from "./test-command.js";
+
+// VRAM scheduler primitives (Epic 5)
+export { VramScheduler } from "./vram-scheduler.js";
+export type {
+  SchedulerTask,
+  SchedulerDecision,
+  SchedulerNoSlots,
+  SchedulerState,
+  VramSchedulerOptions,
+} from "./vram-scheduler.js";
+
+// Completion detector
+export { CompletionDetector } from "./completion-detector.js";
+export type { CompletionSignals, CompletionResult } from "./completion-detector.js";
+
+// VRAM Client interface
+export { initVramClient, acquireSlot, releaseSlot } from "./vram-client.js";
+export type { SlotAllocation, HostedAuth } from "./vram-client.js";

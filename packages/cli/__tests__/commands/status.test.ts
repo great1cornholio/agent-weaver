@@ -20,6 +20,7 @@ const {
   mockGetReviewDecision,
   mockGetPendingComments,
   mockSessionManager,
+  mockRegistryGet,
   sessionsDirRef,
 } = vi.hoisted(() => ({
   mockTmux: vi.fn(),
@@ -40,6 +41,7 @@ const {
     spawnOrchestrator: vi.fn(),
     send: vi.fn(),
   },
+  mockRegistryGet: vi.fn(),
   sessionsDirRef: { current: "" },
 }));
 
@@ -151,6 +153,9 @@ function buildSessionsFromDir(
 
 vi.mock("../../src/lib/create-session-manager.js", () => ({
   getSessionManager: async (): Promise<SessionManager> => mockSessionManager as SessionManager,
+  getPluginRegistry: async () => ({
+    get: mockRegistryGet,
+  }),
 }));
 
 let tmpDir: string;
@@ -226,6 +231,44 @@ beforeEach(() => {
   mockSessionManager.get.mockReset();
   mockSessionManager.spawn.mockReset();
   mockSessionManager.send.mockReset();
+  mockRegistryGet.mockReset();
+
+  mockRegistryGet.mockImplementation((slot: string) => {
+    if (slot === "agent") {
+      return {
+        name: "claude-code",
+        processName: "claude",
+        detectActivity: () => "idle",
+        getSessionInfo: mockIntrospect,
+        getActivityState: mockGetActivityState,
+      };
+    }
+
+    if (slot === "scm") {
+      return {
+        name: "github",
+        detectPR: mockDetectPR,
+        getCISummary: mockGetCISummary,
+        getReviewDecision: mockGetReviewDecision,
+        getPendingComments: mockGetPendingComments,
+        getAutomatedComments: vi.fn().mockResolvedValue([]),
+        getCIChecks: vi.fn().mockResolvedValue([]),
+        getReviews: vi.fn().mockResolvedValue([]),
+        getMergeability: vi.fn().mockResolvedValue({
+          mergeable: true,
+          ciPassing: true,
+          approved: false,
+          noConflicts: true,
+          blockers: [],
+        }),
+        getPRState: vi.fn().mockResolvedValue("open"),
+        mergePR: vi.fn(),
+        closePR: vi.fn(),
+      };
+    }
+
+    return null;
+  });
 
   // Default: list reads from sessionsDir
   mockSessionManager.list.mockImplementation(async () => {

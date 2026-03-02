@@ -1,60 +1,78 @@
 import chalk from "chalk";
 import ora from "ora";
 import type { Command } from "commander";
+import type { PRInfo, ProjectConfig, ReviewDecision, SCM, Session } from "@composio/ao-core";
 import { loadConfig } from "@composio/ao-core";
-import { exec, gh } from "../lib/shell.js";
-import { getSessionManager } from "../lib/create-session-manager.js";
+import { exec } from "../lib/shell.js";
+import { getPluginRegistry, getSessionManager } from "../lib/create-session-manager.js";
 
 interface ReviewInfo {
   sessionId: string;
   tmuxTarget: string;
   prNumber: string;
   pendingComments: number;
-  reviewDecision: string | null;
+  reviewDecision: ReviewDecision;
+  scmName: string;
+}
+
+function parseProjectRepo(repo: string): { owner: string; name: string } {
+  const parts = repo.split("/").filter(Boolean);
+  if (parts.length < 2) {
+    return { owner: "", name: "" };
+  }
+  return {
+    owner: parts.slice(0, -1).join("/"),
+    name: parts[parts.length - 1],
+  };
+}
+
+function parseReviewNumber(prUrl: string): number | null {
+  const match = prUrl.match(/\/(?:pull|merge_requests)\/(\d+)(?:$|[/?#])/);
+  if (!match) return null;
+
+  const number = parseInt(match[1], 10);
+  return Number.isNaN(number) ? null : number;
+}
+
+function buildPRInfoFromSession(session: Session, project: ProjectConfig): PRInfo | null {
+  const prUrl = session.metadata["pr"];
+  if (!prUrl) return null;
+
+  const number = parseReviewNumber(prUrl);
+  if (number === null) return null;
+
+  const repoParts = parseProjectRepo(project.repo);
+  if (!repoParts.owner || !repoParts.name) return null;
+
+  return {
+    number,
+    url: prUrl,
+    title: "",
+    owner: repoParts.owner,
+    repo: repoParts.name,
+    branch: session.branch ?? "",
+    baseBranch: project.defaultBranch,
+    isDraft: false,
+  };
 }
 
 async function checkPRReviews(
-  repo: string,
-  prNumber: string,
-): Promise<{ pendingComments: number; reviewDecision: string | null }> {
-  const [owner, name] = repo.split("/");
-  if (!owner || !name) {
-    return { pendingComments: 0, reviewDecision: null };
-  }
-
-  // Use GraphQL with variable passing (-F) to avoid injection via repo names
-  const query =
-    "query($owner:String!,$name:String!,$pr:Int!){repository(owner:$owner,name:$name){pullRequest(number:$pr){reviewDecision reviewThreads(first:100){nodes{isResolved}}}}}";
-  const result = await gh([
-    "api",
-    "graphql",
-    "-f",
-    `query=${query}`,
-    "-f",
-    `owner=${owner}`,
-    "-f",
-    `name=${name}`,
-    "-F",
-    `pr=${prNumber}`,
-    "--jq",
-    ".data.repository.pullRequest",
-  ]);
-
-  if (!result) {
-    return { pendingComments: 0, reviewDecision: null };
-  }
-
+  scm: SCM,
+  prInfo: PRInfo,
+): Promise<{ pendingComments: number; reviewDecision: ReviewDecision }> {
   try {
-    const data = JSON.parse(result);
-    const unresolvedCount = Array.isArray(data.reviewThreads?.nodes)
-      ? data.reviewThreads.nodes.filter((t: { isResolved: boolean }) => !t.isResolved).length
-      : 0;
-    return {
-      pendingComments: unresolvedCount,
-      reviewDecision: data.reviewDecision || null,
-    };
+    const [reviewDecisionRaw, pendingCommentsRaw] = await Promise.all([
+      scm.getReviewDecision(prInfo).catch(() => "none" as ReviewDecision),
+      scm.getPendingComments(prInfo).catch(() => []),
+    ]);
+
+    const pendingComments = pendingCommentsRaw.length;
+    const reviewDecision: ReviewDecision =
+      reviewDecisionRaw === "none" && pendingComments > 0 ? "pending" : reviewDecisionRaw;
+
+    return { pendingComments, reviewDecision };
   } catch {
-    return { pendingComments: 0, reviewDecision: null };
+    return { pendingComments: 0, reviewDecision: "none" };
   }
 }
 
@@ -66,6 +84,7 @@ export function registerReviewCheck(program: Command): void {
     .option("--dry-run", "Show what would be done without sending messages")
     .action(async (projectId: string | undefined, opts: { dryRun?: boolean }) => {
       const config = loadConfig();
+      const registry = await getPluginRegistry(config);
 
       if (projectId && !config.projects[projectId]) {
         console.error(chalk.red(`Unknown project: ${projectId}`));
@@ -84,19 +103,25 @@ export function registerReviewCheck(program: Command): void {
 
         const project = config.projects[session.projectId];
         if (!project?.repo) continue;
+        const scmName = project.scm?.plugin ?? "github";
+        const scm = registry.get<SCM>("scm", scmName);
+        if (!scm) continue;
 
-        const prNum = prUrl.match(/(\d+)\s*$/)?.[1];
-        if (!prNum) continue;
+        const prInfo = buildPRInfoFromSession(session, project);
+        if (!prInfo) continue;
+
+        const prNum = String(prInfo.number);
 
         try {
-          const { pendingComments, reviewDecision } = await checkPRReviews(project.repo, prNum);
-          if (pendingComments > 0 || reviewDecision === "CHANGES_REQUESTED") {
+          const { pendingComments, reviewDecision } = await checkPRReviews(scm, prInfo);
+          if (pendingComments > 0 || reviewDecision === "changes_requested") {
             results.push({
               sessionId: session.id,
               tmuxTarget: session.runtimeHandle?.id ?? session.id,
               prNumber: prNum,
               pendingComments,
               reviewDecision,
+              scmName,
             });
           }
         } catch {
@@ -119,7 +144,7 @@ export function registerReviewCheck(program: Command): void {
 
       for (const result of results) {
         console.log(`  ${chalk.green(result.sessionId)}  PR #${result.prNumber}`);
-        if (result.reviewDecision) {
+        if (result.reviewDecision !== "none") {
           console.log(`    Decision: ${chalk.yellow(result.reviewDecision)}`);
         }
         if (result.pendingComments > 0) {
@@ -133,8 +158,11 @@ export function registerReviewCheck(program: Command): void {
             await new Promise((resolve) => setTimeout(resolve, 500));
             await exec("tmux", ["send-keys", "-t", result.tmuxTarget, "C-u"]);
             await new Promise((resolve) => setTimeout(resolve, 200));
-            const message =
-              "There are review comments on your PR. Check with `gh pr view --comments` and `gh api` for inline comments. Address each one, push fixes, and reply.";
+            const reviewCmd =
+              result.scmName === "gitlab"
+                ? "glab mr view --comments"
+                : "gh pr view --comments";
+            const message = `There are review comments on your ${result.scmName === "gitlab" ? "MR" : "PR"}. Check with \`${reviewCmd}\` for details, address each comment, push fixes, and reply.`;
             await exec("tmux", ["send-keys", "-t", result.tmuxTarget, "-l", message]);
             await new Promise((resolve) => setTimeout(resolve, 200));
             await exec("tmux", ["send-keys", "-t", result.tmuxTarget, "Enter"]);

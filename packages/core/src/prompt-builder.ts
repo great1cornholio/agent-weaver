@@ -2,18 +2,18 @@
  * Prompt Builder — composes layered prompts for agent sessions.
  *
  * Three layers:
- *   1. BASE_AGENT_PROMPT — constant instructions about session lifecycle, git workflow, PR handling
+ *   1. BASE_AGENT_PROMPT — loaded from prompts/${agentType}.md, fallback to default.
  *   2. Config-derived context — project name, repo, default branch, tracker info, reaction rules
  *   3. User rules — inline agentRules and/or agentRulesFile content
- *
- * buildPrompt() returns null when there's nothing meaningful to compose
- * (no issue, no rules, no explicit prompt), preserving backward compatibility
- * for bare launches.
  */
 
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ProjectConfig } from "./types.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // =============================================================================
 // LAYER 1: BASE AGENT PROMPT
@@ -37,7 +37,27 @@ export const BASE_AGENT_PROMPT = `You are an AI coding agent managed by the Agen
 - Write a clear PR title and description explaining what changed and why.
 - Link the issue in the PR description so it auto-closes when merged.
 - If the repo has CI checks, make sure they pass before requesting review.
-- Respond to every review comment, even if just to acknowledge it.`;
+- Respond to every review comment, even if just to acknowledge it.
+
+## Completion Contract (strict)
+- You are operating directly on the repository files in this environment; do not ask the user to paste files into chat. IMMEDIATELY start writing to the actual files in your container.
+- Do not stop at analysis-only or advisory-only output.
+- A task is complete only when all of the following are true:
+  1) code changes are committed,
+  2) branch is pushed to remote,
+  3) PR/MR is created.
+- If push or PR/MR creation fails, report the exact error and continue with the next best recovery step.`;
+
+function getBasePromptForAgent(agentType?: string): string {
+  if (!agentType) return BASE_AGENT_PROMPT;
+  
+  try {
+    const promptPath = join(__dirname, "../prompts", `${agentType}.md`);
+    return readFileSync(promptPath, "utf-8").trim();
+  } catch {
+    return BASE_AGENT_PROMPT;
+  }
+}
 
 // =============================================================================
 // TYPES
@@ -58,6 +78,9 @@ export interface PromptBuildConfig {
 
   /** Explicit user prompt (appended last) */
   userPrompt?: string;
+  
+  /** Type of agent to load specific system prompt */
+  agentType?: string;
 }
 
 // =============================================================================
@@ -158,8 +181,8 @@ export function buildPrompt(config: PromptBuildConfig): string | null {
 
   const sections: string[] = [];
 
-  // Layer 1: Base prompt (always included when we have something to compose)
-  sections.push(BASE_AGENT_PROMPT);
+  // Layer 1: Base prompt (loaded from prompts or fallback to default)
+  sections.push(getBasePromptForAgent(config.agentType));
 
   // Layer 2: Config-derived context
   sections.push(buildConfigLayer(config));

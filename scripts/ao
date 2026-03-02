@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+export AIDER_OPENAI_API_BASE="${AIDER_OPENAI_API_BASE:-http://127.0.0.1:8090/v1}"
+export AIDER_OPENAI_API_KEY="${AIDER_OPENAI_API_KEY:-local}"
+export AIDER_MODEL="${AIDER_MODEL:-openai/gpt-oss-120b-Q8_0-00001-of-00002.gguf}"
+
+exec node "$REPO_ROOT/packages/cli/dist/index.js" "$@"

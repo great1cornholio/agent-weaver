@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { createSessionManager } from "../session-manager.js";
 import { writeMetadata, readMetadata, readMetadataRaw, deleteMetadata } from "../metadata.js";
 import { getSessionsDir, getProjectBaseDir } from "../paths.js";
+import { getEventLogPath } from "../event-log.js";
 import {
   SessionNotRestorableError,
   WorkspaceMissingError,
@@ -25,6 +26,7 @@ let configPath: string;
 let sessionsDir: string;
 let mockRuntime: Runtime;
 let mockAgent: Agent;
+let mockCoordinatorAgent: Agent;
 let mockWorkspace: Workspace;
 let mockRegistry: PluginRegistry;
 let config: OrchestratorConfig;
@@ -61,6 +63,17 @@ beforeEach(() => {
     getSessionInfo: vi.fn().mockResolvedValue(null),
   };
 
+  mockCoordinatorAgent = {
+    name: "coordinator",
+    processName: "codex",
+    getLaunchCommand: vi.fn().mockReturnValue("codex --coordinator"),
+    getEnvironment: vi.fn().mockReturnValue({ AGENT_VAR: "coord" }),
+    detectActivity: vi.fn().mockReturnValue("active"),
+    getActivityState: vi.fn().mockResolvedValue({ state: "active" }),
+    isProcessRunning: vi.fn().mockResolvedValue(true),
+    getSessionInfo: vi.fn().mockResolvedValue(null),
+  };
+
   mockWorkspace = {
     name: "mock-ws",
     create: vi.fn().mockResolvedValue({
@@ -75,9 +88,9 @@ beforeEach(() => {
 
   mockRegistry = {
     register: vi.fn(),
-    get: vi.fn().mockImplementation((slot: string, _name: string) => {
+    get: vi.fn().mockImplementation((slot: string, name: string) => {
       if (slot === "runtime") return mockRuntime;
-      if (slot === "agent") return mockAgent;
+      if (slot === "agent") return name === "coordinator" ? mockCoordinatorAgent : mockAgent;
       if (slot === "workspace") return mockWorkspace;
       return null;
     }),
@@ -134,6 +147,12 @@ afterEach(() => {
 });
 
 describe("spawn", () => {
+  beforeEach(() => {
+    process.env.VRAM_MAX_RETRIES = "1";
+  });
+  afterEach(() => {
+    delete process.env.VRAM_MAX_RETRIES;
+  });
   it("creates a session with workspace, runtime, and agent", async () => {
     const sm = createSessionManager({ config, registry: mockRegistry });
 
@@ -281,6 +300,298 @@ describe("spawn", () => {
     expect(meta!.status).toBe("spawning");
     expect(meta!.project).toBe("my-app");
     expect(meta!.issue).toBe("INT-42");
+  });
+
+  it("writes session.started event to ao-events.jsonl", async () => {
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    await sm.spawn({ projectId: "my-app", issueId: "INT-42" });
+
+    const logPath = getEventLogPath(configPath, join(tmpDir, "my-app"));
+    const lines = readFileSync(logPath, "utf-8").trim().split("\n");
+    const last = JSON.parse(lines[lines.length - 1] ?? "{}");
+
+    expect(last.type).toBe("session.started");
+    expect(last.sessionId).toBe("app-1");
+    expect(last.projectId).toBe("my-app");
+    expect(last.data.issueId).toBe("INT-42");
+    expect(last.data.workflow).toBe("simple");
+  });
+
+  it("uses coordinator agent for workflow full", async () => {
+    const fullConfig: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "full",
+        },
+      },
+    };
+
+    const sm = createSessionManager({ config: fullConfig, registry: mockRegistry });
+    await sm.spawn({ projectId: "my-app", issueId: "INT-42" });
+
+    expect(mockCoordinatorAgent.getLaunchCommand).toHaveBeenCalled();
+    expect(mockAgent.getLaunchCommand).not.toHaveBeenCalled();
+  });
+
+  it("throws when workflow full is configured and coordinator plugin is missing", async () => {
+    const fullConfig: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "full",
+        },
+      },
+    };
+
+    const registryWithoutCoordinator: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return name === "coordinator" ? null : mockAgent;
+        if (slot === "workspace") return mockWorkspace;
+        return null;
+      }),
+    };
+
+    const sm = createSessionManager({ config: fullConfig, registry: registryWithoutCoordinator });
+    await expect(sm.spawn({ projectId: "my-app", issueId: "INT-42" })).rejects.toThrow(
+      "Agent plugin 'coordinator' not found",
+    );
+  });
+
+  it("resolves workflow auto to full for complex issue labels", async () => {
+    const autoConfig: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "auto",
+        },
+      },
+    };
+
+    const mockTracker: Tracker = {
+      name: "mock-tracker",
+      getIssue: vi.fn().mockResolvedValue({
+        id: "INT-100",
+        title: "Epic task",
+        description: "Short description",
+        url: "https://tracker/issues/INT-100",
+        state: "open",
+        labels: ["epic"],
+      }),
+      isCompleted: vi.fn().mockResolvedValue(false),
+      issueUrl: vi.fn().mockReturnValue("https://tracker/issues/INT-100"),
+      branchName: vi.fn().mockReturnValue("feat/INT-100"),
+      generatePrompt: vi.fn().mockResolvedValue("Work on INT-100"),
+    };
+
+    const registryWithTracker: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return name === "coordinator" ? mockCoordinatorAgent : mockAgent;
+        if (slot === "workspace") return mockWorkspace;
+        if (slot === "tracker") return mockTracker;
+        return null;
+      }),
+    };
+
+    const sm = createSessionManager({ config: autoConfig, registry: registryWithTracker });
+    await sm.spawn({ projectId: "my-app", issueId: "INT-100" });
+
+    expect(mockCoordinatorAgent.getLaunchCommand).toHaveBeenCalled();
+    expect(mockAgent.getLaunchCommand).not.toHaveBeenCalled();
+  });
+
+  it("emits pipeline events and clears checkpoint in workflow full", async () => {
+    const fullConfig: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "full",
+        },
+      },
+    };
+
+    const sm = createSessionManager({ config: fullConfig, registry: mockRegistry });
+    const session = await sm.spawn({ projectId: "my-app", issueId: "INT-42" });
+
+    const logPath = getEventLogPath(configPath, join(tmpDir, "my-app"));
+    const rows = readFileSync(logPath, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string });
+
+    expect(rows.some((row) => row.type === "pipeline.layer.started")).toBe(true);
+    expect(rows.some((row) => row.type === "pipeline.layer.completed")).toBe(true);
+    expect(rows.some((row) => row.type === "pipeline.completed")).toBe(true);
+
+    const checkpointPath = join("/tmp/mock-ws/app-1", ".ao", `pipeline-${session.id}.json`);
+    expect(existsSync(checkpointPath)).toBe(false);
+  });
+
+  it("emits vram slot acquire and release events when scheduler config is present", async () => {
+    const schedulerConfig: OrchestratorConfig = {
+      ...config,
+      hosts: {
+        local: {
+          address: "localhost",
+          models: {
+            "model-tester": {
+              endpoint: "http://localhost:8081/v1",
+              vramGb: 8,
+              maxSlots: 1,
+            },
+            "model-developer": {
+              endpoint: "http://localhost:8082/v1",
+              vramGb: 8,
+              maxSlots: 1,
+            },
+            "model-reviewer": {
+              endpoint: "http://localhost:8083/v1",
+              vramGb: 8,
+              maxSlots: 1,
+            },
+          },
+        },
+      },
+      agentTypes: {
+        tester: { model: "model-tester", maxConcurrentPerHost: 1 },
+        developer: { model: "model-developer", maxConcurrentPerHost: 1 },
+        reviewer: { model: "model-reviewer", maxConcurrentPerHost: 1 },
+      },
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "full",
+        },
+      },
+    };
+
+    const sm = createSessionManager({ config: schedulerConfig, registry: mockRegistry });
+    await sm.spawn({ projectId: "my-app", issueId: "INT-42" });
+
+    const logPath = getEventLogPath(configPath, join(tmpDir, "my-app"));
+    const rows = readFileSync(logPath, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string; data?: Record<string, unknown> });
+
+    const acquired = rows.filter((row) => row.type === "vram.slot.acquired");
+    const released = rows.filter((row) => row.type === "vram.slot.released");
+
+    expect(acquired.length).toBe(3);
+    expect(released.length).toBe(3);
+    expect(acquired.every((row) => typeof row.data?.["host"] === "string")).toBe(true);
+    expect(released.every((row) => typeof row.data?.["model"] === "string")).toBe(true);
+  });
+
+  it("emits vram.slot.waiting and pipeline.failed when no scheduler slot can be allocated", async () => {
+    const schedulerConfig: OrchestratorConfig = {
+      ...config,
+      hosts: {
+        local: {
+          address: "localhost",
+          models: {
+            "model-only-developer": {
+              endpoint: "http://localhost:8081/v1",
+              vramGb: 8,
+              maxSlots: 1,
+            },
+          },
+        },
+      },
+      agentTypes: {
+        tester: { model: "model-missing", maxConcurrentPerHost: 1 },
+        developer: { model: "model-only-developer", maxConcurrentPerHost: 1 },
+        reviewer: { model: "model-only-developer", maxConcurrentPerHost: 1 },
+      },
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "full",
+        },
+      },
+    };
+
+    const sm = createSessionManager({ config: schedulerConfig, registry: mockRegistry });
+    await sm.spawn({ projectId: "my-app", issueId: "INT-404" });
+
+    const logPath = getEventLogPath(configPath, join(tmpDir, "my-app"));
+    const rows = readFileSync(logPath, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string; data?: Record<string, unknown> });
+
+    const waitingRows = rows.filter((row) => row.type === "vram.slot.waiting");
+    const failed = rows.find((row) => row.type === "pipeline.failed");
+
+    expect(waitingRows.length).toBeGreaterThan(0);
+    expect(waitingRows[0]?.data?.["subtaskId"]).toBe("subtask-0");
+    expect(failed).toBeDefined();
+  }, 15000);
+
+  it("emits selected test command from AGENTS.md in workflow full", async () => {
+    const fullConfig: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "full",
+          testCmd: "pnpm test",
+        },
+      },
+    };
+
+    const workspacePath = join(tmpDir, "workspaces", "app-1");
+    mkdirSync(workspacePath, { recursive: true });
+    writeFileSync(join(workspacePath, "AGENTS.md"), "Test command: npm run test:ci\n", "utf-8");
+
+    const workspaceWithAgents: Workspace = {
+      ...mockWorkspace,
+      create: vi.fn().mockResolvedValue({
+        path: workspacePath,
+        branch: "feat/INT-42",
+        sessionId: "app-1",
+        projectId: "my-app",
+      }),
+    };
+
+    const registry: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return name === "coordinator" ? mockCoordinatorAgent : mockAgent;
+        if (slot === "workspace") return workspaceWithAgents;
+        return null;
+      }),
+    };
+
+    const sm = createSessionManager({ config: fullConfig, registry });
+    await sm.spawn({ projectId: "my-app", issueId: "INT-42" });
+
+    const logPath = getEventLogPath(configPath, join(tmpDir, "my-app"));
+    const rows = readFileSync(logPath, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string; data?: Record<string, unknown> });
+
+    const selected = rows.find((row) => row.type === "pipeline.test.command.selected");
+    expect(selected).toBeDefined();
+    expect(selected?.data?.["command"]).toBe("npm run test:ci");
+    expect(selected?.data?.["source"]).toBe("agents");
   });
 
   it("throws for unknown project", async () => {
@@ -915,6 +1226,26 @@ describe("get", () => {
     expect(session!.pr!.url).toBe("https://github.com/org/repo/pull/42");
   });
 
+  it("parses GitLab MR metadata URL into PR fields", async () => {
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "feature/test",
+      status: "working",
+      project: "my-app",
+      pr: "https://gitlab.com/group/subgroup/repo/-/merge_requests/77",
+    });
+
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    const session = await sm.get("app-1");
+
+    expect(session).not.toBeNull();
+    expect(session!.pr).not.toBeNull();
+    expect(session!.pr!.number).toBe(77);
+    expect(session!.pr!.owner).toBe("group/subgroup");
+    expect(session!.pr!.repo).toBe("repo");
+    expect(session!.pr!.url).toBe("https://gitlab.com/group/subgroup/repo/-/merge_requests/77");
+  });
+
   it("detects activity using agent-native mechanism", async () => {
     const agentWithState: Agent = {
       ...mockAgent,
@@ -1003,6 +1334,27 @@ describe("kill", () => {
     const sm = createSessionManager({ config, registry: registryWithFail });
     // Should not throw even though runtime.destroy fails
     await expect(sm.kill("app-1")).resolves.toBeUndefined();
+  });
+
+  it("writes session.completed event to ao-events.jsonl on kill", async () => {
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp/ws",
+      branch: "main",
+      status: "working",
+      project: "my-app",
+      runtimeHandle: JSON.stringify(makeHandle("rt-1")),
+    });
+
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    await sm.kill("app-1");
+
+    const logPath = getEventLogPath(configPath, join(tmpDir, "my-app"));
+    const lines = readFileSync(logPath, "utf-8").trim().split("\n");
+    const last = JSON.parse(lines[lines.length - 1] ?? "{}");
+
+    expect(last.type).toBe("session.completed");
+    expect(last.sessionId).toBe("app-1");
+    expect(last.data.finalStatus).toBe("killed");
   });
 });
 

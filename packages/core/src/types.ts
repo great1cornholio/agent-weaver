@@ -178,6 +178,7 @@ export interface SessionSpawnConfig {
   prompt?: string;
   /** Override the agent plugin for this session (e.g. "codex", "claude-code") */
   agent?: string;
+  agentType?: string;
 }
 
 /** Config for creating an orchestrator session */
@@ -322,6 +323,13 @@ export interface Agent {
    * run git/gh commands. Without this, PRs created by agents never show up.
    */
   setupWorkspaceHooks?(workspacePath: string, config: WorkspaceHooksConfig): Promise<void>;
+
+  /**
+   * Optional: Allows executing an agent inline within the NodeJS process of the Orchestrator,
+   * without spawning an external REPL or CLI command via the `Runtime` interface.
+   * Typical use cases are parsing deterministic JSON outputs from `coordinator` or `reviewer`.
+   */
+  executeInline?<T = unknown>(config: AgentLaunchConfig, context?: any): Promise<T>;
 }
 
 export interface AgentLaunchConfig {
@@ -352,6 +360,13 @@ export interface AgentLaunchConfig {
    * - Codex/Aider: similar shell substitution
    */
   systemPromptFile?: string;
+
+  /** Optionally, endpoint details required for inline synchronous agents */
+  inlineConfig?: {
+    endpoint: string;
+    model: string;
+    auth?: { type: "bearer" | "basic"; token: string };
+  };
 }
 
 export interface WorkspaceHooksConfig {
@@ -823,6 +838,18 @@ export interface OrchestratorConfig {
   /** Default plugin selections */
   defaults: DefaultPlugins;
 
+  /** Optional inference hosts and model slot configuration (Epic 3) */
+  hosts?: Record<string, HostConfig>;
+
+  /** Optional agent type to model mapping for scheduler constraints (Epic 3) */
+  agentTypes?: Record<string, AgentTypeConfig>;
+
+  /** Optional scheduler tuning for queue behavior and retries (Epic 5) */
+  concurrency?: ConcurrencyConfig;
+
+  /** Optional externally configured plugins grouped by slot (Epic 6) */
+  plugins?: Partial<Record<PluginSlot, PluginConfigEntry[]>>;
+
   /** Project configurations */
   projects: Record<string, ProjectConfig>;
 
@@ -841,6 +868,41 @@ export interface DefaultPlugins {
   agent: string;
   workspace: string;
   notifiers: string[];
+}
+
+export interface HostModelConfig {
+  endpoint: string;
+  vramGb: number;
+  maxSlots: number;
+  contextWindow?: number;
+  file?: string;
+}
+
+export interface HostConfig {
+  address: string;
+  totalVramGb?: number;
+  healthCheck?: string;
+  auth?: {
+    type: string;
+    token: string;
+  };
+  models: Record<string, HostModelConfig>;
+}
+
+export interface AgentTypeConfig {
+  model: string;
+  maxConcurrentPerHost?: number;
+}
+
+export interface ConcurrencyConfig {
+  /** Number of queue positions ahead of the head task considered for scheduling */
+  queueLookahead: number;
+
+  /** Maximum times a task can be skipped before receiving absolute priority */
+  maxSkipsPerTask: number;
+
+  /** Default retry-after in seconds when no slots are available */
+  retryBackoff: number;
 }
 
 export interface ProjectConfig {
@@ -883,6 +945,15 @@ export interface ProjectConfig {
   /** Agent-specific configuration */
   agentConfig?: AgentSpecificConfig;
 
+  /** Workflow mode for orchestrating task execution */
+  workflow?: "simple" | "full" | "auto";
+
+  /** TDD enforcement mode used by pipeline orchestration */
+  tddMode?: "strict" | "warn" | "off";
+
+  /** Project test command used by TDD checks and agent tooling */
+  testCmd?: string;
+
   /** Per-project reaction overrides */
   reactions?: Record<string, Partial<ReactionConfig>>;
 
@@ -917,6 +988,13 @@ export interface AgentSpecificConfig {
   model?: string;
   [key: string]: unknown;
 }
+
+export type PluginConfigEntry =
+  | string
+  | {
+      module: string;
+      config?: Record<string, unknown>;
+    };
 
 // =============================================================================
 // PLUGIN SYSTEM
