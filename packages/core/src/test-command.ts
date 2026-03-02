@@ -32,7 +32,10 @@ function readAgentsCommand(workspacePath: string): string | null {
   }
 }
 
-export function resolveTestCommand(project: ProjectConfig, workspacePath: string): ResolvedTestCommand {
+export function resolveTestCommand(
+  project: ProjectConfig,
+  workspacePath: string,
+): ResolvedTestCommand {
   const fromAgents = readAgentsCommand(workspacePath);
   if (fromAgents) {
     return { command: fromAgents, source: "agents" };

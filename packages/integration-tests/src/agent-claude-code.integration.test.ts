@@ -19,7 +19,11 @@ import { mkdtemp, readdir, realpath, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { readLastJsonlEntry, type ActivityDetection, type AgentSessionInfo } from "@composio/ao-core";
+import {
+  readLastJsonlEntry,
+  type ActivityDetection,
+  type AgentSessionInfo,
+} from "@composio/ao-core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import claudeCodePlugin, { toClaudeProjectPath } from "@composio/ao-plugin-agent-claude-code";
 import {
@@ -89,9 +93,7 @@ async function findRealClaudeProject(): Promise<{
       continue;
     }
 
-    const jsonlFiles = files.filter(
-      (f) => f.endsWith(".jsonl") && !f.startsWith("agent-"),
-    );
+    const jsonlFiles = files.filter((f) => f.endsWith(".jsonl") && !f.startsWith("agent-"));
     if (jsonlFiles.length === 0) continue;
 
     // Try to reconstruct the workspace path from the encoded dir name

@@ -159,7 +159,13 @@ function eventToReactionKey(eventType: EventType): string | null {
 
 function normalizeTddResult(raw: string): "passed" | "failed" {
   const value = raw.trim().toLowerCase();
-  if (value === "pass" || value === "passed" || value === "ok" || value === "true" || value === "1") {
+  if (
+    value === "pass" ||
+    value === "passed" ||
+    value === "ok" ||
+    value === "true" ||
+    value === "1"
+  ) {
     return "passed";
   }
   return "failed";
@@ -222,9 +228,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
             "runtime",
             project.runtime ?? config.defaults.runtime,
           );
-          const terminalOutput = runtime
-            ? await runtime.getOutput(session.runtimeHandle, 10)
-            : "";
+          const terminalOutput = runtime ? await runtime.getOutput(session.runtimeHandle, 10) : "";
           if (terminalOutput) {
             const activity = agent.detectActivity(terminalOutput);
             if (activity === "waiting_input") return "needs_input";
@@ -483,7 +487,10 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     while (match) {
       const phase = match[1]?.toLowerCase();
       const resultRaw = match[2] ?? "failed";
-      if ((phase === "red" || phase === "green") && !loggedTddResults.has(`${session.id}:${phase}`)) {
+      if (
+        (phase === "red" || phase === "green") &&
+        !loggedTddResults.has(`${session.id}:${phase}`)
+      ) {
         loggedTddResults.add(`${session.id}:${phase}`);
         appendSessionEventLog(session, `tdd.${phase}.result`, {
           result: normalizeTddResult(resultRaw),

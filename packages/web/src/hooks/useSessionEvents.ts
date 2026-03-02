@@ -25,7 +25,12 @@ function reducer(state: DashboardSession[], action: Action): DashboardSession[] 
           return s;
         }
         changed = true;
-        return { ...s, status: patch.status, activity: patch.activity, lastActivityAt: patch.lastActivityAt };
+        return {
+          ...s,
+          status: patch.status,
+          activity: patch.activity,
+          lastActivityAt: patch.lastActivityAt,
+        };
       });
       return changed ? next : state;
     }

@@ -111,10 +111,12 @@ describe("getLaunchCommand", () => {
   const agent = create();
 
   it("generates base command", () => {
-    expect(agent.getLaunchCommand(makeLaunchConfig())).toBe("aider --yes-always --no-show-model-warnings");
+    expect(agent.getLaunchCommand(makeLaunchConfig())).toBe(
+      "aider --yes-always --yes --auto-commits --no-show-model-warnings",
+    );
   });
 
-  it("includes --yes when permissions=skip", () => {
+  it("includes --yes when permissions=skip (now basically always includes --yes)", () => {
     const cmd = agent.getLaunchCommand(makeLaunchConfig({ permissions: "skip" }));
     expect(cmd).toContain("--yes");
   });
@@ -128,7 +130,9 @@ describe("getLaunchCommand", () => {
     const cmd = agent.getLaunchCommand(
       makeLaunchConfig({ permissions: "skip", model: "sonnet", prompt: "Go" }),
     );
-    expect(cmd).toBe("aider --yes-always --no-show-model-warnings --message 'Go'");
+    expect(cmd).toBe(
+      "aider --yes-always --yes --auto-commits --no-show-model-warnings --message 'Go'",
+    );
   });
 
   it("escapes single quotes in prompt (POSIX shell escaping)", () => {
@@ -212,7 +216,8 @@ describe("isProcessRunning", () => {
       }
       if (cmd === "ps") {
         return Promise.resolve({
-          stdout: "  PID TT ARGS\n  100 ttys001  bash\n  200 ttys002  aider --yes-always --no-show-model-warnings\n",
+          stdout:
+            "  PID TT ARGS\n  100 ttys001  bash\n  200 ttys002  aider --yes-always --no-show-model-warnings\n",
           stderr: "",
         });
       }

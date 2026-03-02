@@ -33,7 +33,9 @@ export interface VramSchedulerOptions {
   statePath?: string;
 }
 
-function buildInitialSlots(hosts: Record<string, HostConfig>): Record<string, Record<string, number>> {
+function buildInitialSlots(
+  hosts: Record<string, HostConfig>,
+): Record<string, Record<string, number>> {
   const usedSlots: Record<string, Record<string, number>> = {};
   for (const [hostName, host] of Object.entries(hosts)) {
     usedSlots[hostName] = {};
@@ -44,7 +46,9 @@ function buildInitialSlots(hosts: Record<string, HostConfig>): Record<string, Re
   return usedSlots;
 }
 
-function buildInitialAgentCounts(hosts: Record<string, HostConfig>): Record<string, Record<string, number>> {
+function buildInitialAgentCounts(
+  hosts: Record<string, HostConfig>,
+): Record<string, Record<string, number>> {
   const counts: Record<string, Record<string, number>> = {};
   for (const hostName of Object.keys(hosts)) {
     counts[hostName] = {};
@@ -87,7 +91,9 @@ export class VramScheduler {
       return { error: "no_slots", retryAfter: this.retryBackoff };
     }
 
-    const forcedTask = queue.find((task) => (this.skipCounts[task.id] ?? 0) >= this.maxSkipsPerTask);
+    const forcedTask = queue.find(
+      (task) => (this.skipCounts[task.id] ?? 0) >= this.maxSkipsPerTask,
+    );
     if (forcedTask) {
       const forcedCandidate = this.findHostForTask(forcedTask);
       if (forcedCandidate) {
@@ -125,7 +131,10 @@ export class VramScheduler {
   snapshot(): SchedulerState {
     return {
       version: 1,
-      usedSlots: JSON.parse(JSON.stringify(this.usedSlots)) as Record<string, Record<string, number>>,
+      usedSlots: JSON.parse(JSON.stringify(this.usedSlots)) as Record<
+        string,
+        Record<string, number>
+      >,
       activeAgentCounts: JSON.parse(JSON.stringify(this.activeAgentCounts)) as Record<
         string,
         Record<string, number>

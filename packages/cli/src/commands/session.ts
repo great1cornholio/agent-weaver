@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import chalk from "chalk";
 import type { Command } from "commander";
 import { loadConfig, SessionNotRestorableError, WorkspaceMissingError } from "@composio/ao-core";
@@ -87,6 +88,53 @@ export function registerSession(program: Command): void {
         console.error(chalk.red(`Failed to kill session ${sessionName}: ${err}`));
         process.exit(1);
       }
+    });
+
+  session
+    .command("attach")
+    .description("Attach directly to the active agent session")
+    .argument("<session>", "Session name to attach to")
+    .action(async (sessionName: string) => {
+      const config = loadConfig();
+      const sm = await getSessionManager(config);
+
+      const targetSession = await sm.get(sessionName);
+      if (!targetSession) {
+        console.error(chalk.red(`Session ${sessionName} not found.`));
+        process.exit(1);
+      }
+
+      if (targetSession.status === "killed" || targetSession.status === "terminated") {
+        console.error(
+          chalk.red(`Cannot attach: session ${sessionName} is already ${targetSession.status}.`),
+        );
+        process.exit(1);
+      }
+
+      if (targetSession.runtimeHandle?.runtimeName !== "tmux") {
+        console.error(
+          chalk.red(
+            `Attach is currently only supported for tmux runtime (found: ${targetSession.runtimeHandle?.runtimeName ?? "unknown"}).`,
+          ),
+        );
+        process.exit(1);
+      }
+
+      const tmuxTarget = targetSession.runtimeHandle.id;
+      console.log(
+        chalk.blue(
+          `Jumping to agent ${chalk.bold(sessionName)} terminal (tmux target: ${tmuxTarget})...`,
+        ),
+      );
+      console.log(chalk.dim("Tip: Use Ctrl+B, then D to safely detach and return here."));
+
+      const attachProc = spawn("tmux", ["attach", "-t", tmuxTarget], { stdio: "inherit" });
+      attachProc.on("exit", (code) => {
+        if (code && code !== 0) {
+          console.error(chalk.red(`tmux attach exited with code ${code}`));
+          process.exit(code);
+        }
+      });
     });
 
   session

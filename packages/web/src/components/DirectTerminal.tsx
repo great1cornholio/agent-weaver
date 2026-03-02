@@ -93,9 +93,7 @@ export function DirectTerminal({
         // agent = blue (#5b7ef8), orchestrator = violet (#a371f7)
         const cursorColor = variant === "orchestrator" ? "#a371f7" : "#5b7ef8";
         const selectionColor =
-          variant === "orchestrator"
-            ? "rgba(163, 113, 247, 0.25)"
-            : "rgba(91, 126, 248, 0.3)";
+          variant === "orchestrator" ? "rgba(163, 113, 247, 0.25)" : "rgba(91, 126, 248, 0.3)";
 
         // Initialize xterm.js Terminal
         const terminal = new Terminal({
@@ -109,22 +107,22 @@ export function DirectTerminal({
             cursorAccent: "#0a0a0f",
             selectionBackground: selectionColor,
             // ANSI colors — slightly warmer than pure defaults
-            black:         "#1a1a24",
-            red:           "#ef4444",
-            green:         "#22c55e",
-            yellow:        "#f59e0b",
-            blue:          "#5b7ef8",
-            magenta:       "#a371f7",
-            cyan:          "#22d3ee",
-            white:         "#d4d4d8",
-            brightBlack:   "#50506a",
-            brightRed:     "#f87171",
-            brightGreen:   "#4ade80",
-            brightYellow:  "#fbbf24",
-            brightBlue:    "#7b9cfb",
+            black: "#1a1a24",
+            red: "#ef4444",
+            green: "#22c55e",
+            yellow: "#f59e0b",
+            blue: "#5b7ef8",
+            magenta: "#a371f7",
+            cyan: "#22d3ee",
+            white: "#d4d4d8",
+            brightBlack: "#50506a",
+            brightRed: "#f87171",
+            brightGreen: "#4ade80",
+            brightYellow: "#fbbf24",
+            brightBlue: "#7b9cfb",
             brightMagenta: "#c084fc",
-            brightCyan:    "#67e8f9",
-            brightWhite:   "#eeeef5",
+            brightCyan: "#67e8f9",
+            brightWhite: "#eeeef5",
           },
           scrollback: 10000,
           allowProposedApi: true,
@@ -364,7 +362,8 @@ export function DirectTerminal({
     };
   }, [fullscreen]);
 
-  const accentColor = variant === "orchestrator" ? "var(--color-accent-violet)" : "var(--color-accent)";
+  const accentColor =
+    variant === "orchestrator" ? "var(--color-accent-violet)" : "var(--color-accent)";
 
   const statusDotClass =
     status === "connected"
@@ -374,11 +373,7 @@ export function DirectTerminal({
         : "bg-[var(--color-status-attention)] animate-[pulse_1.5s_ease-in-out_infinite]";
 
   const statusText =
-    status === "connected"
-      ? "Connected"
-      : status === "error"
-        ? (error ?? "Error")
-        : "Connecting…";
+    status === "connected" ? "Connected" : status === "error" ? (error ?? "Error") : "Connecting…";
 
   const statusTextColor =
     status === "connected"
@@ -398,13 +393,12 @@ export function DirectTerminal({
       {/* Terminal chrome bar */}
       <div className="flex items-center gap-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-3 py-2">
         <div className={cn("h-2 w-2 shrink-0 rounded-full", statusDotClass)} />
-        <span
-          className="font-[var(--font-mono)] text-[11px]"
-          style={{ color: accentColor }}
-        >
+        <span className="font-[var(--font-mono)] text-[11px]" style={{ color: accentColor }}>
           {sessionId}
         </span>
-        <span className={cn("text-[10px] font-medium uppercase tracking-[0.06em]", statusTextColor)}>
+        <span
+          className={cn("text-[10px] font-medium uppercase tracking-[0.06em]", statusTextColor)}
+        >
           {statusText}
         </span>
         {/* XDA clipboard badge */}
@@ -423,14 +417,26 @@ export function DirectTerminal({
         >
           {fullscreen ? (
             <>
-              <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <svg
+                className="h-3 w-3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
                 <path d="M8 3v3a2 2 0 01-2 2H3m18 0h-3a2 2 0 01-2-2V3m0 18v-3a2 2 0 012-2h3M3 16h3a2 2 0 012 2v3" />
               </svg>
               exit fullscreen
             </>
           ) : (
             <>
-              <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <svg
+                className="h-3 w-3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
                 <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3" />
               </svg>
               fullscreen

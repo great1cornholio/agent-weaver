@@ -136,9 +136,9 @@ describe("scm-gitlab plugin", () => {
     mockGlab({});
     await scm.mergePR!(pr);
     expect(glabMock).toHaveBeenCalledWith(
-        "glab", 
-        ["mr", "merge", "7", "--repo", "group/repo", "--squash"], 
-        expect.anything()
+      "glab",
+      ["mr", "merge", "7", "--repo", "group/repo", "--squash"],
+      expect.anything(),
     );
   });
 
@@ -146,9 +146,9 @@ describe("scm-gitlab plugin", () => {
     mockGlab({});
     await scm.closePR!(pr);
     expect(glabMock).toHaveBeenCalledWith(
-        "glab", 
-        ["mr", "close", "7", "--repo", "group/repo"], 
-        expect.anything()
+      "glab",
+      ["mr", "close", "7", "--repo", "group/repo"],
+      expect.anything(),
     );
   });
 
@@ -159,7 +159,11 @@ describe("scm-gitlab plugin", () => {
   });
 
   it("gets reviews correctly with date parsing", async () => {
-    mockGlab({ approvals: { approved_by: [{ user: { username: "bob" }, created_at: "2024-01-01T00:00:00Z" }] } });
+    mockGlab({
+      approvals: {
+        approved_by: [{ user: { username: "bob" }, created_at: "2024-01-01T00:00:00Z" }],
+      },
+    });
     const reviews = await scm.getReviews!(pr);
     expect(reviews).toHaveLength(1);
     expect(reviews[0].author).toBe("bob");
@@ -173,12 +177,14 @@ describe("scm-gitlab plugin", () => {
     const comments = await scm.getPendingComments!(pr);
     expect(comments).toHaveLength(2);
     expect(comments[0].author).toBe("reviewer"); // no @mention
-    expect(comments[1].author).toBe("bob"); 
+    expect(comments[1].author).toBe("bob");
   });
 
   it("gets automated comments", async () => {
     // bot comments
-    glabMock.mockResolvedValueOnce({ stdout: "Critical error by @gitlab-bot\n\nWarning from @renovate-bot" });
+    glabMock.mockResolvedValueOnce({
+      stdout: "Critical error by @gitlab-bot\n\nWarning from @renovate-bot",
+    });
     const comments = await scm.getAutomatedComments!(pr);
     expect(comments).toHaveLength(2);
     expect(comments[0].botName).toBe("gitlab-bot");
@@ -221,10 +227,10 @@ describe("scm-gitlab plugin", () => {
     glabMock.mockResolvedValueOnce({ stdout: "invalid-json" });
     // fallback getPRState
     glabMock.mockResolvedValueOnce({ stdout: JSON.stringify({ state: "opened" }) });
-    
+
     const summary = await scm.getCISummary!(pr);
     expect(summary).toBe("failing");
-    
+
     // getCIChecks throws again
     glabMock.mockResolvedValueOnce({ stdout: "invalid-json" });
     // fallback getPRState merged
@@ -240,10 +246,10 @@ describe("scm-gitlab plugin", () => {
 
   it("returns changes_requested if somehow present in reviews", async () => {
     // Current mapping only maps basic approvals, but just to cover the logic if getReviews ever returns a changes_requested review:
-    // Actually getReviews only returns "approved" right now based on glab `approvals` object. 
+    // Actually getReviews only returns "approved" right now based on glab `approvals` object.
     // This tests the `getReviewDecision` switch for complete branch coverage if we mock `getReviews`.
     // Let's just mock mockGlab for getReviewDecision -> well, it maps approved_by to "approved".
-    // So "changes_requested" branch in getReviewDecision is currently unreachable natively via glab mr view approvals, 
+    // So "changes_requested" branch in getReviewDecision is currently unreachable natively via glab mr view approvals,
     // but we can just test if the array was manipulated.
     mockGlab({ approvals: { approved_by: [] } });
     // we just check if no blockers are empty, wait, the method uses `this.getReviews`. We can't mock this easily here just yet. So let it be.
@@ -251,9 +257,13 @@ describe("scm-gitlab plugin", () => {
 
   it("reports mergeability blockers when CI fails", async () => {
     // CI returns failed
-    glabMock.mockResolvedValueOnce({ stdout: JSON.stringify([{ name: "test", status: "failed" }]) });
+    glabMock.mockResolvedValueOnce({
+      stdout: JSON.stringify([{ name: "test", status: "failed" }]),
+    });
     // Reviews approved
-    glabMock.mockResolvedValueOnce({ stdout: JSON.stringify({ approvals: { approved_by: [{ user: { username: "alice" } }] } }) });
+    glabMock.mockResolvedValueOnce({
+      stdout: JSON.stringify({ approvals: { approved_by: [{ user: { username: "alice" } }] } }),
+    });
     // State is opened
     glabMock.mockResolvedValueOnce({ stdout: JSON.stringify({ state: "opened" }) });
 

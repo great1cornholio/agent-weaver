@@ -26,7 +26,7 @@ const BOT_AUTHORS = new Set([
   "gitlab-actions",
   "renovate-bot",
   "sonarcloud-bot",
-  "codecov[bot]"
+  "codecov[bot]",
 ]);
 
 async function glab(args: string[]): Promise<string> {
@@ -141,7 +141,15 @@ function createGitLabSCM(): SCM {
     },
 
     async getPRState(pr: PRInfo): Promise<PRState> {
-      const raw = await glab(["mr", "view", String(pr.number), "--repo", `${pr.owner}/${pr.repo}`, "--output", "json"]);
+      const raw = await glab([
+        "mr",
+        "view",
+        String(pr.number),
+        "--repo",
+        `${pr.owner}/${pr.repo}`,
+        "--output",
+        "json",
+      ]);
       let data: { state: string };
       try {
         data = JSON.parse(raw);
@@ -152,7 +160,15 @@ function createGitLabSCM(): SCM {
     },
 
     async getPRSummary(pr: PRInfo) {
-      const raw = await glab(["mr", "view", String(pr.number), "--repo", `${pr.owner}/${pr.repo}`, "--output", "json"]);
+      const raw = await glab([
+        "mr",
+        "view",
+        String(pr.number),
+        "--repo",
+        `${pr.owner}/${pr.repo}`,
+        "--output",
+        "json",
+      ]);
       let data: {
         state: string;
         title: string;
@@ -244,7 +260,15 @@ function createGitLabSCM(): SCM {
     },
 
     async getReviews(pr: PRInfo): Promise<Review[]> {
-      const raw = await glab(["mr", "view", String(pr.number), "--repo", `${pr.owner}/${pr.repo}`, "--output", "json"]);
+      const raw = await glab([
+        "mr",
+        "view",
+        String(pr.number),
+        "--repo",
+        `${pr.owner}/${pr.repo}`,
+        "--output",
+        "json",
+      ]);
       let data: {
         approvals?: {
           approved_by?: Array<{ user: { username: string }; created_at?: string }>;
@@ -276,7 +300,14 @@ function createGitLabSCM(): SCM {
     },
 
     async getPendingComments(pr: PRInfo): Promise<ReviewComment[]> {
-      const raw = await glab(["mr", "view", String(pr.number), "--repo", `${pr.owner}/${pr.repo}`, "--comments"]);
+      const raw = await glab([
+        "mr",
+        "view",
+        String(pr.number),
+        "--repo",
+        `${pr.owner}/${pr.repo}`,
+        "--comments",
+      ]);
       if (!raw) return [];
 
       return raw
@@ -299,7 +330,14 @@ function createGitLabSCM(): SCM {
     },
 
     async getAutomatedComments(pr: PRInfo): Promise<AutomatedComment[]> {
-      const raw = await glab(["mr", "view", String(pr.number), "--repo", `${pr.owner}/${pr.repo}`, "--comments"]);
+      const raw = await glab([
+        "mr",
+        "view",
+        String(pr.number),
+        "--repo",
+        `${pr.owner}/${pr.repo}`,
+        "--comments",
+      ]);
       if (!raw) return [];
 
       return raw

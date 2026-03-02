@@ -248,12 +248,12 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
 
   // Initialize VRAM client for the session manager lifecycle
   if (config.hosts && config.agentTypes) {
-     const globalScheduler = new VramScheduler(config.hosts, config.agentTypes, {
-         queueLookahead: config.concurrency?.queueLookahead,
-         maxSkipsPerTask: config.concurrency?.maxSkipsPerTask,
-         retryBackoff: config.concurrency?.retryBackoff,
-     });
-     initVramClient(globalScheduler, config.hosts);
+    const globalScheduler = new VramScheduler(config.hosts, config.agentTypes, {
+      queueLookahead: config.concurrency?.queueLookahead,
+      maxSkipsPerTask: config.concurrency?.maxSkipsPerTask,
+      retryBackoff: config.concurrency?.retryBackoff,
+    });
+    initVramClient(globalScheduler, config.hosts);
   }
 
   /**
@@ -303,7 +303,10 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
   /** Resolve which plugins to use for a project. */
   function resolvePlugins(project: ProjectConfig, agentOverride?: string) {
     const runtime = registry.get<Runtime>("runtime", project.runtime ?? config.defaults.runtime);
-    const agent = registry.get<Agent>("agent", agentOverride ?? project.agent ?? config.defaults.agent);
+    const agent = registry.get<Agent>(
+      "agent",
+      agentOverride ?? project.agent ?? config.defaults.agent,
+    );
     const workspace = registry.get<Workspace>(
       "workspace",
       project.workspace ?? config.defaults.workspace,
@@ -341,9 +344,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
    * Enrich session with live runtime state (alive/exited) and activity detection.
    * Mutates the session object in place.
    */
-  const TERMINAL_SESSION_STATUSES = new Set([
-    "killed", "done", "merged", "terminated", "cleanup",
-  ]);
+  const TERMINAL_SESSION_STATUSES = new Set(["killed", "done", "merged", "terminated", "cleanup"]);
 
   async function enrichSessionWithRuntimeState(
     session: Session,
@@ -488,8 +489,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       // If the issueId is already branch-safe (e.g. "INT-9999"), use as-is.
       // Otherwise sanitize free-text (e.g. "fix login bug") into a valid slug.
       const id = spawnConfig.issueId;
-      const isBranchSafe =
-        /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id) && !id.includes("..");
+      const isBranchSafe = /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id) && !id.includes("..");
       const slug = isBranchSafe
         ? id
         : id
@@ -666,29 +666,39 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
 
         let pipelinePlan: SubtaskPlan;
         if (selectedAgent.executeInline) {
-           let coordAllocation: { host: string; model: string } | null = null;
-           if (config.agentTypes?.["coordinator"]) {
-             try {
-               const model = config.agentTypes["coordinator"].model;
-               const acquired = await acquireSlot(model, "coordinator", `${sessionId}-coord`);
-               coordAllocation = { host: acquired.host, model: acquired.model };
-               agentLaunchConfig.inlineConfig = { endpoint: acquired.endpoint, model: acquired.model };
-             } catch (err) {
-               console.warn(`Could not schedule VRAM for coordinator: ${err}`);
-             }
-           }
-           try {
-               pipelinePlan = (await selectedAgent.executeInline(agentLaunchConfig)) as SubtaskPlan;
-           } catch (err) {
-               console.warn(`Coordinator inline execution failed, falling back to default plan: ${err}`);
-               pipelinePlan = buildDefaultFullWorkflowPlan(spawnConfig.issueId);
-           } finally {
-               if (coordAllocation) {
-                   await releaseSlot(coordAllocation.model, coordAllocation.host, "coordinator", `${sessionId}-coord`);
-               }
-           }
+          let coordAllocation: { host: string; model: string } | null = null;
+          if (config.agentTypes?.["coordinator"]) {
+            try {
+              const model = config.agentTypes["coordinator"].model;
+              const acquired = await acquireSlot(model, "coordinator", `${sessionId}-coord`);
+              coordAllocation = { host: acquired.host, model: acquired.model };
+              agentLaunchConfig.inlineConfig = {
+                endpoint: acquired.endpoint,
+                model: acquired.model,
+              };
+            } catch (err) {
+              console.warn(`Could not schedule VRAM for coordinator: ${err}`);
+            }
+          }
+          try {
+            pipelinePlan = (await selectedAgent.executeInline(agentLaunchConfig)) as SubtaskPlan;
+          } catch (err) {
+            console.warn(
+              `Coordinator inline execution failed, falling back to default plan: ${err}`,
+            );
+            pipelinePlan = buildDefaultFullWorkflowPlan(spawnConfig.issueId);
+          } finally {
+            if (coordAllocation) {
+              await releaseSlot(
+                coordAllocation.model,
+                coordAllocation.host,
+                "coordinator",
+                `${sessionId}-coord`,
+              );
+            }
+          }
         } else {
-           pipelinePlan = buildDefaultFullWorkflowPlan(spawnConfig.issueId);
+          pipelinePlan = buildDefaultFullWorkflowPlan(spawnConfig.issueId);
         }
 
         appendStructuredEvent(config.configPath, project.path, {
@@ -730,13 +740,13 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
             if (shouldSchedule) {
               try {
                 const acquired = await acquireSlot(
-                  config.agentTypes![subtask.agentType].model, 
-                  subtask.agentType, 
-                  subtask.id
+                  config.agentTypes![subtask.agentType].model,
+                  subtask.agentType,
+                  subtask.id,
                 );
-                
+
                 allocation = { host: acquired.host, model: acquired.model };
-                
+
                 appendStructuredEvent(config.configPath, project.path, {
                   type: "vram.slot.acquired",
                   sessionId,
@@ -749,17 +759,17 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
                   },
                 });
               } catch (err) {
-                 appendStructuredEvent(config.configPath, project.path, {
-                    type: "vram.slot.waiting",
-                    sessionId,
-                    projectId: spawnConfig.projectId,
-                    data: {
-                      subtaskId: subtask.id,
-                      agentType: subtask.agentType,
-                      error: err instanceof Error ? err.message : String(err),
-                    },
-                 });
-                 throw err;
+                appendStructuredEvent(config.configPath, project.path, {
+                  type: "vram.slot.waiting",
+                  sessionId,
+                  projectId: spawnConfig.projectId,
+                  data: {
+                    subtaskId: subtask.id,
+                    agentType: subtask.agentType,
+                    error: err instanceof Error ? err.message : String(err),
+                  },
+                });
+                throw err;
               }
             }
 
@@ -1029,36 +1039,41 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
   async function list(projectId?: string): Promise<Session[]> {
     const allSessions = listAllSessions(projectId);
 
-    const sessionPromises = allSessions.map(async ({ sessionName, projectId: sessionProjectId }) => {
-      const project = config.projects[sessionProjectId];
-      if (!project) return null;
+    const sessionPromises = allSessions.map(
+      async ({ sessionName, projectId: sessionProjectId }) => {
+        const project = config.projects[sessionProjectId];
+        if (!project) return null;
 
-      const sessionsDir = getProjectSessionsDir(project);
-      const raw = readMetadataRaw(sessionsDir, sessionName);
-      if (!raw) return null;
+        const sessionsDir = getProjectSessionsDir(project);
+        const raw = readMetadataRaw(sessionsDir, sessionName);
+        if (!raw) return null;
 
-      // Get file timestamps for createdAt/lastActivityAt
-      let createdAt: Date | undefined;
-      let modifiedAt: Date | undefined;
-      try {
-        const metaPath = join(sessionsDir, sessionName);
-        const stats = statSync(metaPath);
-        createdAt = stats.birthtime;
-        modifiedAt = stats.mtime;
-      } catch {
-        // If stat fails, timestamps will fall back to current time
-      }
+        // Get file timestamps for createdAt/lastActivityAt
+        let createdAt: Date | undefined;
+        let modifiedAt: Date | undefined;
+        try {
+          const metaPath = join(sessionsDir, sessionName);
+          const stats = statSync(metaPath);
+          createdAt = stats.birthtime;
+          modifiedAt = stats.mtime;
+        } catch {
+          // If stat fails, timestamps will fall back to current time
+        }
 
-      const session = metadataToSession(sessionName, raw, createdAt, modifiedAt);
+        const session = metadataToSession(sessionName, raw, createdAt, modifiedAt);
 
-      const plugins = resolvePlugins(project, raw["agent"]);
-      // Cap per-session enrichment at 2s — subprocess calls (tmux/ps) can be
-      // slow under load. If we time out, session keeps its metadata values.
-      const enrichTimeout = new Promise<void>((resolve) => setTimeout(resolve, 2_000));
-      await Promise.race([ensureHandleAndEnrich(session, sessionName, project, plugins), enrichTimeout]);
+        const plugins = resolvePlugins(project, raw["agent"]);
+        // Cap per-session enrichment at 2s — subprocess calls (tmux/ps) can be
+        // slow under load. If we time out, session keeps its metadata values.
+        const enrichTimeout = new Promise<void>((resolve) => setTimeout(resolve, 2_000));
+        await Promise.race([
+          ensureHandleAndEnrich(session, sessionName, project, plugins),
+          enrichTimeout,
+        ]);
 
-      return session;
-    });
+        return session;
+      },
+    );
 
     const results = await Promise.all(sessionPromises);
     return results.filter((s): s is Session => s !== null);
@@ -1178,10 +1193,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         // Never clean up orchestrator sessions — they manage the lifecycle.
         // Check explicit role metadata first, fall back to naming convention
         // for pre-existing sessions spawned before the role field was added.
-        if (
-          session.metadata["role"] === "orchestrator" ||
-          session.id.endsWith("-orchestrator")
-        ) {
+        if (session.metadata["role"] === "orchestrator" || session.id.endsWith("-orchestrator")) {
           result.skipped.push(session.id);
           continue;
         }

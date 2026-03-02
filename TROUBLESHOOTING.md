@@ -95,12 +95,12 @@ pnpm run ao -- spawn <project> [issue] --no-preflight
 
 ### Spawn preflight quick matrix
 
-| Symptom | Probable Cause | Fix |
-| --- | --- | --- |
-| `Unknown project: <id>` | Wrong project key in config | `pnpm run ao -- status` and use key from `agent-orchestrator.yaml` |
-| `binary.tmux` | tmux missing | Install tmux (`sudo apt install tmux` / `brew install tmux`) |
-| `binary.gh` / `binary.glab` | CLI missing for selected tracker/SCM | Install `gh` or `glab` and relaunch terminal |
-| `tracker.linear.auth` | Missing Linear auth | `export LINEAR_API_KEY=...` (or `COMPOSIO_API_KEY`) |
+| Symptom                     | Probable Cause                       | Fix                                                                |
+| --------------------------- | ------------------------------------ | ------------------------------------------------------------------ |
+| `Unknown project: <id>`     | Wrong project key in config          | `pnpm run ao -- status` and use key from `agent-orchestrator.yaml` |
+| `binary.tmux`               | tmux missing                         | Install tmux (`sudo apt install tmux` / `brew install tmux`)       |
+| `binary.gh` / `binary.glab` | CLI missing for selected tracker/SCM | Install `gh` or `glab` and relaunch terminal                       |
+| `tracker.linear.auth`       | Missing Linear auth                  | `export LINEAR_API_KEY=...` (or `COMPOSIO_API_KEY`)                |
 
 ### Smoke verification (single command)
 

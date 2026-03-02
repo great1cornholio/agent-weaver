@@ -96,9 +96,7 @@ describe("findProcessWebDir", () => {
     writeFileSync(join(webDir, "package.json"), "{}");
 
     // Simulate lsof -p <pid> -Fn output
-    mockExecSilent.mockResolvedValue(
-      `p12345\nfcwd\nn${webDir}\nftxt\nn/usr/bin/node`,
-    );
+    mockExecSilent.mockResolvedValue(`p12345\nfcwd\nn${webDir}\nftxt\nn/usr/bin/node`);
 
     const { findProcessWebDir } = await import("../../src/lib/dashboard-rebuild.js");
 
@@ -111,9 +109,7 @@ describe("findProcessWebDir", () => {
     mkdirSync(webDir, { recursive: true });
     // No package.json
 
-    mockExecSilent.mockResolvedValue(
-      `p12345\nfcwd\nn${webDir}\nftxt\nn/usr/bin/node`,
-    );
+    mockExecSilent.mockResolvedValue(`p12345\nfcwd\nn${webDir}\nftxt\nn/usr/bin/node`);
 
     const { findProcessWebDir } = await import("../../src/lib/dashboard-rebuild.js");
 
@@ -148,8 +144,7 @@ describe("looksLikeStaleBuild pattern matching", () => {
 
   it("detects vendor-chunks module not found (the actual bug)", () => {
     // This is the exact error from the bug report
-    const stderr =
-      "Error: Cannot find module '/path/to/.next/server/vendor-chunks/xterm@5.3.0.js'";
+    const stderr = "Error: Cannot find module '/path/to/.next/server/vendor-chunks/xterm@5.3.0.js'";
     expect(looksLikeStaleBuild(stderr)).toBe(true);
   });
 

@@ -25,12 +25,7 @@ export interface TaskPipelineManagerOptions {
   maxGreenRetries?: number;
   onLayerStart?: (layerIndex: number, layer: Subtask[]) => void;
   onLayerCompleted?: (layerIndex: number, layer: Subtask[]) => void;
-  onSubtaskRetry?: (
-    subtask: Subtask,
-    attempt: number,
-    error: unknown,
-    nextDelayMs: number,
-  ) => void;
+  onSubtaskRetry?: (subtask: Subtask, attempt: number, error: unknown, nextDelayMs: number) => void;
   checkpointStore?: PipelineCheckpointStore;
   sessionId?: string;
 }

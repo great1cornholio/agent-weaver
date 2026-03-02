@@ -50,7 +50,7 @@ export const BASE_AGENT_PROMPT = `You are an AI coding agent managed by the Agen
 
 function getBasePromptForAgent(agentType?: string): string {
   if (!agentType) return BASE_AGENT_PROMPT;
-  
+
   try {
     const promptPath = join(__dirname, "../prompts", `${agentType}.md`);
     return readFileSync(promptPath, "utf-8").trim();
@@ -78,7 +78,7 @@ export interface PromptBuildConfig {
 
   /** Explicit user prompt (appended last) */
   userPrompt?: string;
-  
+
   /** Type of agent to load specific system prompt */
   agentType?: string;
 }

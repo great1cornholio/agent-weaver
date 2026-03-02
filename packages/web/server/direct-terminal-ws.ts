@@ -87,10 +87,7 @@ export function createDirectTerminalServer(tmuxPath?: string): DirectTerminalSer
     // Enable mouse mode for scrollback support
     const mouseProc = spawn(TMUX, ["set-option", "-t", tmuxSessionId, "mouse", "on"]);
     mouseProc.on("error", (err) => {
-      console.error(
-        `[DirectTerminal] Failed to set mouse mode for ${tmuxSessionId}:`,
-        err.message,
-      );
+      console.error(`[DirectTerminal] Failed to set mouse mode for ${tmuxSessionId}:`, err.message);
     });
 
     // Hide the green status bar for cleaner appearance
@@ -130,7 +127,10 @@ export function createDirectTerminalServer(tmuxPath?: string): DirectTerminalSer
       console.log(`[DirectTerminal] PTY spawned successfully`);
     } catch (err) {
       console.error(`[DirectTerminal] Failed to spawn PTY:`, err);
-      ws.close(1011, `Failed to spawn terminal: ${err instanceof Error ? err.message : String(err)}`);
+      ws.close(
+        1011,
+        `Failed to spawn terminal: ${err instanceof Error ? err.message : String(err)}`,
+      );
       return;
     }
 
@@ -212,7 +212,8 @@ export function createDirectTerminalServer(tmuxPath?: string): DirectTerminalSer
 
 // --- Run as standalone script ---
 // Only start the server when executed directly (not imported by tests)
-const isMainModule = process.argv[1]?.endsWith("direct-terminal-ws.ts") ||
+const isMainModule =
+  process.argv[1]?.endsWith("direct-terminal-ws.ts") ||
   process.argv[1]?.endsWith("direct-terminal-ws.js");
 
 if (isMainModule) {

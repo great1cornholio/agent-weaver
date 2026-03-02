@@ -120,10 +120,6 @@ describe("pipeline-plan", () => {
     };
 
     const layers = buildExecutionLayers(plan).map((layer) => layer.map((subtask) => subtask.id));
-    expect(layers).toEqual([
-      ["subtask-0", "subtask-1"],
-      ["subtask-2", "subtask-3"],
-      ["subtask-4"],
-    ]);
+    expect(layers).toEqual([["subtask-0", "subtask-1"], ["subtask-2", "subtask-3"], ["subtask-4"]]);
   });
 });

@@ -164,11 +164,9 @@ describe("spawn command", () => {
       projectId: "my-app",
       issueId: "INT-100",
     });
-    expect(mockRunSpawnPreflight).toHaveBeenCalledWith(
-      expect.any(Object),
-      "my-app",
-      { issueProvided: true },
-    );
+    expect(mockRunSpawnPreflight).toHaveBeenCalledWith(expect.any(Object), "my-app", {
+      issueProvided: true,
+    });
 
     const output = consoleSpy.mock.calls.map((c) => String(c[0])).join("\n");
     expect(output).toContain("app-7");
@@ -313,17 +311,17 @@ describe("spawn command", () => {
   });
 
   it("rejects unknown project ID", async () => {
-    await expect(
-      program.parseAsync(["node", "test", "spawn", "nonexistent"]),
-    ).rejects.toThrow("process.exit(1)");
+    await expect(program.parseAsync(["node", "test", "spawn", "nonexistent"])).rejects.toThrow(
+      "process.exit(1)",
+    );
   });
 
   it("reports error when spawn fails", async () => {
     mockSessionManager.spawn.mockRejectedValue(new Error("worktree creation failed"));
 
-    await expect(
-      program.parseAsync(["node", "test", "spawn", "my-app"]),
-    ).rejects.toThrow("process.exit(1)");
+    await expect(program.parseAsync(["node", "test", "spawn", "my-app"])).rejects.toThrow(
+      "process.exit(1)",
+    );
   });
 
   it("fails fast when preflight returns errors", async () => {
@@ -361,6 +359,9 @@ describe("spawn command", () => {
     await program.parseAsync(["node", "test", "spawn", "my-app", "--no-preflight"]);
 
     expect(mockRunSpawnPreflight).not.toHaveBeenCalled();
-    expect(mockSessionManager.spawn).toHaveBeenCalledWith({ projectId: "my-app", issueId: undefined });
+    expect(mockSessionManager.spawn).toHaveBeenCalledWith({
+      projectId: "my-app",
+      issueId: undefined,
+    });
   });
 });

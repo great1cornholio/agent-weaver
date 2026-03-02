@@ -82,7 +82,15 @@ function createGitLabTracker(): Tracker {
     name: "gitlab",
 
     async getIssue(identifier: string, project: ProjectConfig): Promise<Issue> {
-      const raw = await glab(["issue", "view", identifier, "--repo", project.repo, "--output", "json"]);
+      const raw = await glab([
+        "issue",
+        "view",
+        identifier,
+        "--repo",
+        project.repo,
+        "--output",
+        "json",
+      ]);
       let data: GitLabIssue;
       try {
         data = JSON.parse(raw);
@@ -179,7 +187,11 @@ function createGitLabTracker(): Tracker {
       return data.map((issue) => toIssue(issue, project));
     },
 
-    async updateIssue(identifier: string, update: IssueUpdate, project: ProjectConfig): Promise<void> {
+    async updateIssue(
+      identifier: string,
+      update: IssueUpdate,
+      project: ProjectConfig,
+    ): Promise<void> {
       if (update.state === "closed") {
         await glab(["issue", "close", identifier, "--repo", project.repo]);
       } else if (update.state === "open") {

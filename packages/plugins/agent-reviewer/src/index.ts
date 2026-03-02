@@ -66,10 +66,10 @@ function createReviewerAgent(): Agent {
       if (!config.inlineConfig?.endpoint) {
         throw new Error("Reviewer needs inlineConfig.endpoint to reach LLM.");
       }
-      
-      const workspacePath = config.projectConfig.path; // wait, context! No, config.projectConfig.path is original, workspacePath may be created worktree. 
+
+      const workspacePath = config.projectConfig.path; // wait, context! No, config.projectConfig.path is original, workspacePath may be created worktree.
       // Fortunately we can just run glab from the project path if it's identical, or find out later. For now, project path.
-      
+
       let diff = "";
       try {
         const { stdout } = await execFileAsync("glab", ["mr", "diff"], {
@@ -78,12 +78,16 @@ function createReviewerAgent(): Agent {
         });
         diff = stdout;
       } catch (err) {
-         // fallback: just diff master
-         const { stdout } = await execFileAsync("git", ["diff", config.projectConfig.defaultBranch], {
+        // fallback: just diff master
+        const { stdout } = await execFileAsync(
+          "git",
+          ["diff", config.projectConfig.defaultBranch],
+          {
             cwd: workspacePath,
             maxBuffer: 10 * 1024 * 1024,
-         });
-         diff = stdout;
+          },
+        );
+        diff = stdout;
       }
 
       if (!diff.trim()) {
@@ -92,50 +96,54 @@ function createReviewerAgent(): Agent {
       }
 
       const prompt = `Review the following code diff and provide a structured JSON response:\n\n${diff}`;
-      
+
       const payload = {
         model: config.inlineConfig.model,
         messages: [
-          { role: "system", content: "You are the Reviewer Agent. Output valid JSON: { decision: 'APPROVE'|'REQUEST_CHANGES', summary: '...', tddCompliance: true|false, comments: [{path: '..', line: 1, body: '..'}] }\nIf you notice missing tests for logic or unused variables, set tddCompliance to false. Setting tddCompliance to false MUST result in REQUEST_CHANGES decision." },
-          { role: "user", content: prompt }
+          {
+            role: "system",
+            content:
+              "You are the Reviewer Agent. Output valid JSON: { decision: 'APPROVE'|'REQUEST_CHANGES', summary: '...', tddCompliance: true|false, comments: [{path: '..', line: 1, body: '..'}] }\nIf you notice missing tests for logic or unused variables, set tddCompliance to false. Setting tddCompliance to false MUST result in REQUEST_CHANGES decision.",
+          },
+          { role: "user", content: prompt },
         ],
         response_format: { type: "json_object" },
-        temperature: 0.1
+        temperature: 0.1,
       };
 
       const headers: Record<string, string> = {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       };
 
       if (config.inlineConfig.auth?.token) {
-         headers["Authorization"] = `Bearer ${config.inlineConfig.auth.token}`;
+        headers["Authorization"] = `Bearer ${config.inlineConfig.auth.token}`;
       }
 
-      const url = config.inlineConfig.endpoint.endsWith("/chat/completions") 
-         ? config.inlineConfig.endpoint 
-         : `${config.inlineConfig.endpoint}/chat/completions`;
+      const url = config.inlineConfig.endpoint.endsWith("/chat/completions")
+        ? config.inlineConfig.endpoint
+        : `${config.inlineConfig.endpoint}/chat/completions`;
 
       console.log(`[Reviewer] Analyzing diff (${diff.length} chars) using ${url}...`);
-      
+
       const response = await fetch(url, {
-         method: "POST",
-         headers,
-         body: JSON.stringify(payload)
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-         throw new Error(`LLM Error: ${response.status} ${response.statusText}`);
+        throw new Error(`LLM Error: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json() as { choices?: { message?: { content?: string } }[] };
+      const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
       const content = data.choices?.[0]?.message?.content;
       if (!content) throw new Error("Empty response from LLM");
 
       let parsed: unknown;
       try {
-         parsed = JSON.parse(content);
+        parsed = JSON.parse(content);
       } catch (e) {
-         throw new Error(`Invalid JSON from LLM: ${e}`);
+        throw new Error(`Invalid JSON from LLM: ${e}`);
       }
 
       const validated = ReviewResultSchema.parse(parsed);
@@ -143,22 +151,26 @@ function createReviewerAgent(): Agent {
       // Post comments if any
       if (validated.decision === "REQUEST_CHANGES" || validated.comments.length > 0) {
         for (const c of validated.comments) {
-           try {
-              // we don't have line specific note support in basic glab easily, so we just add a combined note for now
-              const note = `File: ${c.path}:${c.line}\n\n${c.body}`;
-              await execFileAsync("glab", ["mr", "note", "-m", note], { cwd: workspacePath });
-           } catch { /* best effort */ }
+          try {
+            // we don't have line specific note support in basic glab easily, so we just add a combined note for now
+            const note = `File: ${c.path}:${c.line}\n\n${c.body}`;
+            await execFileAsync("glab", ["mr", "note", "-m", note], { cwd: workspacePath });
+          } catch {
+            /* best effort */
+          }
         }
       }
 
       if (validated.decision === "APPROVE") {
-         try {
-            await execFileAsync("glab", ["mr", "approve"], { cwd: workspacePath });
-         } catch { /* best effort */ }
+        try {
+          await execFileAsync("glab", ["mr", "approve"], { cwd: workspacePath });
+        } catch {
+          /* best effort */
+        }
       }
 
       return validated as T;
-    }
+    },
   };
 }
 

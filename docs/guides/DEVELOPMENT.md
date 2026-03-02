@@ -277,21 +277,21 @@ gitleaks detect
 
 4. **Configure plugin loading in `agent-orchestrator.yaml`**
 
-    ```yaml
-    plugins:
-       runtime:
-          - "@composio/ao-plugin-runtime-myplugin"
-    ```
+   ```yaml
+   plugins:
+     runtime:
+       - "@composio/ao-plugin-runtime-myplugin"
+   ```
 
-    For inline plugin config:
+   For inline plugin config:
 
-    ```yaml
-    plugins:
-       runtime:
-          - module: "@composio/ao-plugin-runtime-myplugin"
-             config:
-                timeoutMs: 30000
-    ```
+   ```yaml
+   plugins:
+      runtime:
+         - module: "@composio/ao-plugin-runtime-myplugin"
+            config:
+               timeoutMs: 30000
+   ```
 
 5. **Add tests** (`src/index.test.ts`)
 

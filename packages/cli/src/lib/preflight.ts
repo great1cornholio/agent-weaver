@@ -148,7 +148,8 @@ export async function runSpawnPreflight(
       messages.push({
         severity: "error",
         check: "tracker.gitlab.auth",
-        message: "GitLab authentication is not configured (GLAB_TOKEN/GITLAB_TOKEN or glab auth status).",
+        message:
+          "GitLab authentication is not configured (GLAB_TOKEN/GITLAB_TOKEN or glab auth status).",
         fix: "Set GLAB_TOKEN (or GITLAB_TOKEN) or run `glab auth login` before spawning with a GitLab issue.",
       });
     }

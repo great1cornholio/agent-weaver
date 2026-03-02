@@ -5,7 +5,12 @@ import chalk from "chalk";
 import type { Command } from "commander";
 import { loadConfig } from "@composio/ao-core";
 import { findWebDir, buildDashboardEnv } from "../lib/web-dir.js";
-import { cleanNextCache, findRunningDashboardPid, findProcessWebDir, waitForPortFree } from "../lib/dashboard-rebuild.js";
+import {
+  cleanNextCache,
+  findRunningDashboardPid,
+  findProcessWebDir,
+  waitForPortFree,
+} from "../lib/dashboard-rebuild.js";
 
 export function registerDashboard(program: Command): void {
   program
@@ -42,9 +47,7 @@ export function registerDashboard(program: Command): void {
 
         if (runningPid) {
           // Kill the running server, clean .next, then start fresh below.
-          console.log(
-            chalk.dim(`Stopping dashboard (PID ${runningPid}) on port ${port}...`),
-          );
+          console.log(chalk.dim(`Stopping dashboard (PID ${runningPid}) on port ${port}...`));
           try {
             process.kill(parseInt(runningPid, 10), "SIGTERM");
           } catch {

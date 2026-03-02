@@ -93,7 +93,6 @@ export async function readLastJsonlEntry(
   try {
     const [line, fileStat] = await Promise.all([readLastLine(filePath), stat(filePath)]);
 
-
     if (!line) return null;
 
     const parsed: unknown = JSON.parse(line);

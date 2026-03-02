@@ -2,16 +2,43 @@
 
 import { cn } from "@/lib/cn";
 
-const activityConfig: Record<
-  string,
-  { label: string; dot: string; bg: string; text: string }
-> = {
-  active:        { label: "active",   dot: "var(--color-status-working)",   bg: "rgba(88,166,255,0.1)",   text: "var(--color-status-working)" },
-  ready:         { label: "ready",    dot: "var(--color-status-ready)",     bg: "rgba(63,185,80,0.1)",    text: "var(--color-status-ready)" },
-  idle:          { label: "idle",     dot: "var(--color-status-idle)",      bg: "rgba(72,79,88,0.25)",    text: "var(--color-text-secondary)" },
-  waiting_input: { label: "waiting",  dot: "var(--color-status-attention)", bg: "rgba(210,153,34,0.12)",  text: "var(--color-status-attention)" },
-  blocked:       { label: "blocked",  dot: "var(--color-status-error)",     bg: "rgba(248,81,73,0.1)",    text: "var(--color-status-error)" },
-  exited:        { label: "exited",   dot: "var(--color-status-done)",      bg: "rgba(48,54,61,0.5)",     text: "var(--color-text-muted)" },
+const activityConfig: Record<string, { label: string; dot: string; bg: string; text: string }> = {
+  active: {
+    label: "active",
+    dot: "var(--color-status-working)",
+    bg: "rgba(88,166,255,0.1)",
+    text: "var(--color-status-working)",
+  },
+  ready: {
+    label: "ready",
+    dot: "var(--color-status-ready)",
+    bg: "rgba(63,185,80,0.1)",
+    text: "var(--color-status-ready)",
+  },
+  idle: {
+    label: "idle",
+    dot: "var(--color-status-idle)",
+    bg: "rgba(72,79,88,0.25)",
+    text: "var(--color-text-secondary)",
+  },
+  waiting_input: {
+    label: "waiting",
+    dot: "var(--color-status-attention)",
+    bg: "rgba(210,153,34,0.12)",
+    text: "var(--color-status-attention)",
+  },
+  blocked: {
+    label: "blocked",
+    dot: "var(--color-status-error)",
+    bg: "rgba(248,81,73,0.1)",
+    text: "var(--color-status-error)",
+  },
+  exited: {
+    label: "exited",
+    dot: "var(--color-status-done)",
+    bg: "rgba(48,54,61,0.5)",
+    text: "var(--color-text-muted)",
+  },
 };
 
 const fallbackConfig = {

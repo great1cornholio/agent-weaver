@@ -4,14 +4,13 @@ import type { Session, RuntimeHandle, AgentLaunchConfig } from "@composio/ao-cor
 // ---------------------------------------------------------------------------
 // Hoisted mocks — available inside vi.mock factories
 // ---------------------------------------------------------------------------
-const { mockExecFileAsync, mockReaddir, mockReadFile, mockStat, mockHomedir } =
-  vi.hoisted(() => ({
-    mockExecFileAsync: vi.fn(),
-    mockReaddir: vi.fn(),
-    mockReadFile: vi.fn(),
-    mockStat: vi.fn(),
-    mockHomedir: vi.fn(() => "/mock/home"),
-  }));
+const { mockExecFileAsync, mockReaddir, mockReadFile, mockStat, mockHomedir } = vi.hoisted(() => ({
+  mockExecFileAsync: vi.fn(),
+  mockReaddir: vi.fn(),
+  mockReadFile: vi.fn(),
+  mockStat: vi.fn(),
+  mockHomedir: vi.fn(() => "/mock/home"),
+}));
 
 vi.mock("node:child_process", () => {
   const fn = Object.assign((..._args: unknown[]) => {}, {
@@ -658,4 +657,3 @@ describe("getSessionInfo", () => {
     });
   });
 });
-

@@ -338,13 +338,15 @@ function applyDefaultReactions(config: OrchestratorConfig): OrchestratorConfig {
     "tdd-red-failed": {
       auto: true,
       action: "send-to-agent",
-      message: "TDD Guard: Tests did not fail in the Red phase. You must write tests that fail on current implementation before writing code. Please fix the tests.",
+      message:
+        "TDD Guard: Tests did not fail in the Red phase. You must write tests that fail on current implementation before writing code. Please fix the tests.",
       retries: 2,
     },
     "tdd-green-failed": {
       auto: true,
       action: "send-to-agent",
-      message: "TDD Guard: Tests failed in the Green phase. Your implementation did not make the tests pass. Please fix your code to pass the tests.",
+      message:
+        "TDD Guard: Tests failed in the Green phase. Your implementation did not make the tests pass. Please fix your code to pass the tests.",
       retries: 2,
     },
     "agent-needs-input": {

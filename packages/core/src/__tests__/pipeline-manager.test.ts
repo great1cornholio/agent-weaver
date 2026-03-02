@@ -252,7 +252,10 @@ describe("TaskPipelineManager", () => {
     };
 
     const runSubtask = vi.fn(async () => {});
-    const guard = createGuard([], [{ phase: "green", passed: true, testExit: 0, output: "green ok" }]);
+    const guard = createGuard(
+      [],
+      [{ phase: "green", passed: true, testExit: 0, output: "green ok" }],
+    );
     const checkpoint = createCheckpointStore({
       sessionId: "pipeline-session",
       planHash: hashSubtaskPlan(plan),

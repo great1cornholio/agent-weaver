@@ -64,7 +64,10 @@ function createOpenCodeAgent(): Agent {
       return "active";
     },
 
-    async getActivityState(session: Session, _readyThresholdMs?: number): Promise<ActivityDetection | null> {
+    async getActivityState(
+      session: Session,
+      _readyThresholdMs?: number,
+    ): Promise<ActivityDetection | null> {
       // Check if process is running first
       const exitedAt = new Date();
       if (!session.runtimeHandle) return { state: "exited", timestamp: exitedAt };

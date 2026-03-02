@@ -46,14 +46,10 @@ describe.skipIf(!existsSync(cliDistPath))("CLI spawn preflight (integration)", (
       COMPOSIO_API_KEY: "",
     };
 
-    const run = execFileAsync(
-      "node",
-      [cliDistPath, "spawn", "smoke-project", "INT-42"],
-      {
-        env,
-        timeout: 20_000,
-      },
-    );
+    const run = execFileAsync("node", [cliDistPath, "spawn", "smoke-project", "INT-42"], {
+      env,
+      timeout: 20_000,
+    });
 
     await expect(run).rejects.toMatchObject({
       code: 1,

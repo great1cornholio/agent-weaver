@@ -20,6 +20,7 @@ Slot 80B zajęty, ale 2 sloty 30B wolne → scheduler przeskakuje
 coordinator, uruchamia obu coderów.
 
 **Wymagania:**
+
 - Mechanizm anti-starvation: max N przeskoków per task (np. 2),
   potem task dostaje priorytet absolutny
 - Scheduler musi znać zależności między taskami (subtask od coordinatora
@@ -28,6 +29,7 @@ coordinator, uruchamia obu coderów.
   do przodu analizować)
 
 **Ryzyka:**
+
 - Naruszenie kolejności tasków z zależnościami
 - Starvation dużych modeli przez ciągły napływ małych tasków
 
@@ -48,6 +50,7 @@ przeorganizowując VRAM.
 serwer 80B (zwalnia ~60 GB), startuje 3× serwer 30B. Rano odwraca.
 
 **Wymagania:**
+
 - Graceful shutdown llama-server (poczekaj na zakończenie inference)
 - Model loading time budget (~30-60s na załadowanie 80B z dysku)
 - Process manager w schedulerze (start/stop/restart llama-server)
@@ -55,6 +58,7 @@ serwer 80B (zwalnia ~60 GB), startuje 3× serwer 30B. Rano odwraca.
   zamiast ręcznej konfiguracji
 
 **Ryzyka:**
+
 - Czas swapowania modeli (30-60s downtime per operacja)
 - Złożoność zarządzania procesami GPU
 - Potencjalne leaki VRAM przy częstym ładowaniu/wyładowywaniu
@@ -74,15 +78,16 @@ z obu instancji komunikują się i mogą delegować taski między sobą.
 
 **Co daje vs Opcja A (remote endpoint):**
 
-| Aspekt               | Opcja A (v1.0)           | Opcja B (federation)        |
-|----------------------|--------------------------|------------------------------|
-| Kontrola nad hostem  | Brak (zakładasz że działa)| Pełna (ao zarządza)          |
-| Failure recovery     | Ręczna                   | Automatyczna                 |
-| Task delegation      | Brak (tylko inference)   | Pełna (task → remote ao)     |
-| Dashboard            | Jeden (centralny)        | Federowany widok             |
-| Złożoność            | Niska                    | Bardzo wysoka                |
+| Aspekt              | Opcja A (v1.0)             | Opcja B (federation)     |
+| ------------------- | -------------------------- | ------------------------ |
+| Kontrola nad hostem | Brak (zakładasz że działa) | Pełna (ao zarządza)      |
+| Failure recovery    | Ręczna                     | Automatyczna             |
+| Task delegation     | Brak (tylko inference)     | Pełna (task → remote ao) |
+| Dashboard           | Jeden (centralny)          | Federowany widok         |
+| Złożoność           | Niska                      | Bardzo wysoka            |
 
 **Wymagania:**
+
 - Protokół discovery: jak instancje się znajdują (static peers w YAML /
   mDNS / registry)
 - Protokół negocjacji: REST API / message queue (NATS) / webhooks
@@ -94,18 +99,21 @@ z obu instancji komunikują się i mogą delegować taski między sobą.
 - Network partition tolerance: co gdy hosty chwilowo się nie widzą?
 
 **Warianty:**
+
 - **Peer-to-peer:** Oba koordynatorzy równorzędni, oba mogą inicjować
   i delegować taski. Bardziej elastyczne, trudniejsze w implementacji.
 - **Hub-spoke:** Jeden master coordinator deleguje do remote workerów.
   Prostsze, ale single point of failure.
 
 **Podejście przyrostowe:**
+
 1. v1.0 --- Opcja A: remote endpointy, prosty host-aware scheduler
 2. v1.5 --- Dodaj remote health monitoring i auto-failover
 3. v2.0 --- Federacja: remote ao instancja jako "managed worker"
 4. v2.5 --- Peer-to-peer cooperation między koordynatorami
 
 **Ryzyka:**
+
 - Distributed systems are fundamentally hard
 - +4-6 tygodni nad harmonogramem v1.0
 - Git worktrees są lokalne --- remote host potrzebuje własnego clone
@@ -125,6 +133,7 @@ w pamięci RAM. Restart sidecar = utrata informacji o tym, ile slotów
 jest zajętych → potencjalne over-allocation lub slot leaks.
 
 **Opcje:**
+
 - **SQLite file:** `state.db` obok YAML config. Prosty, atomiczny zapis.
 - **Redis:** Jeśli w przyszłości będzie federation (R-003), Redis daje
   shared state out of the box.
@@ -133,12 +142,14 @@ jest zajętych → potencjalne over-allocation lub slot leaks.
   stanem i naprawia rozbieżności.
 
 **Wymagania:**
+
 - Minimum: SQLite z WAL mode
 - Opcjonalnie: periodic snapshot (co 30s) + replay at startup
 - Graceful shutdown: flush state → DB przy SIGTERM
 - Health endpoint raportuje czas od ostatniego snapshotu
 
 **Ryzyka:**
+
 - Dodatkowy I/O (minimalne przy SQLite WAL)
 - Rozbieżność stan DB vs rzeczywistość (rozwiązuje reconciliation)
 
@@ -153,6 +164,7 @@ bez modyfikacji core
 
 Obecny system ma interfejsy dla 2 z 8 typów pluginów (AgentPlugin,
 NotifierPlugin). Brakuje:
+
 - Interfejsy dla pozostałych slotów (Runtime, Workspace, Tracker, SCM,
   Terminal, Lifecycle)
 - Mechanizm discovery: jak ao znajduje i ładuje pluginy
@@ -171,6 +183,7 @@ NotifierPlugin). Brakuje:
 **Zysk:** Specjalizacja agentów pod konkretne zadania
 
 Potencjalne nowe typy:
+
 - **devops** --- konfiguracja CI/CD, Dockerfile, infrastruktura
 - **documenter** --- generowanie/aktualizacja dokumentacji, README,
   API docs
@@ -179,7 +192,8 @@ Potencjalne nowe typy:
 - **security** --- analiza bezpieczeństwa, dependency audit, SAST
 
 Każdy nowy typ = nowy system prompt + opcjonalnie dedykowany model
-+ wpis w `agentTypes` YAML.
+
+- wpis w `agentTypes` YAML.
 
 ---
 
@@ -198,20 +212,24 @@ przez odczyt `runtimeHandle.id` z metadanych sesji i automatyczne
 `tmux attach -t <target>`.
 
 **Zakres MVP:**
+
 - `ao session attach <sessionId>` dla runtime `tmux`
 - Czytelny błąd, gdy sesja nie istnieje lub nie ma aktywnego tmux target
 - Fallback do `sessionId`, jeśli `runtimeHandle.id` nie jest dostępne
 
 **Zakres rozszerzony (opcjonalny):**
+
 - `ao session attach --project <id> <sessionId>` (walidacja jednoznaczności)
 - `ao session logs <sessionId>` (capture-pane bez attach)
 
 **Wymagania:**
+
 - Spójne zachowanie z istniejącym `session ls` i `session kill`
 - Testy CLI dla happy-path + error-path
 - Brak regresji dla innych runtime'ów (process/docker)
 
 **Ryzyka:**
+
 - Rozbieżność metadanych vs rzeczywisty stan tmux (sesja ubita ręcznie)
 - Niejednoznaczność nazw, jeśli użytkownik ręcznie zmienia nazwy tmux
 
@@ -223,11 +241,13 @@ przez odczyt `runtimeHandle.id` z metadanych sesji i automatyczne
 rozbudowuj do "full workflow" z wieloma agentami.
 
 **Faza 1 (v1.0-alpha, ~3 tygodnie):**
+
 - agent-aider plugin (developer only) + VRAM Scheduler (1 host)
 - workflow: simple --- ao spawn → developer → PR → Telegram HITL
 - Cel: działający pipeline dla jednego developera
 
 **Faza 2 (v1.0-beta, +2 tygodnie):**
+
 - coordinator-plugin + reviewer-plugin
 - TaskPipelineManager (topologiczne sortowanie, warstwy)
 - workflow: full --- coordinator → tester → developer → reviewer
@@ -235,6 +255,7 @@ rozbudowuj do "full workflow" z wieloma agentami.
 - Cel: pełny multi-agent flow z 2+ hostami
 
 **Faza 3 (v1.0, +1 tydzień):**
+
 - Profile VRAM (walidacja budżetu przy starcie)
 - testCmd z YAML + AGENTS.md override
 - Stabilizacja, edge-case'y, dokumentacja AGENTS.md per projekt
@@ -243,4 +264,4 @@ rozbudowuj do "full workflow" z wieloma agentami.
 
 ---
 
-*Ostatnia aktualizacja: Luty 2026*
+_Ostatnia aktualizacja: Luty 2026_

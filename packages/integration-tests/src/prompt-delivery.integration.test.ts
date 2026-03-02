@@ -56,10 +56,7 @@ async function findClaudeBinary(): Promise<string | null> {
  * Polls the tmux pane for Claude's prompt character (❯) on its own line.
  * Returns false if the OAuth/login screen is detected instead.
  */
-async function waitForTuiReady(
-  sessionName: string,
-  timeoutMs = 60_000,
-): Promise<boolean> {
+async function waitForTuiReady(sessionName: string, timeoutMs = 60_000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const output = await capturePane(sessionName, CAPTURE_LINES);
@@ -179,13 +176,7 @@ describe.skipIf(!canRunInteractive)(
       // Launch Claude WITHOUT -p (interactive mode) — this is the fix
       await execFileAsync(
         "tmux",
-        [
-          "send-keys",
-          "-t",
-          sessionName,
-          "-l",
-          "CLAUDECODE= claude --dangerously-skip-permissions",
-        ],
+        ["send-keys", "-t", sessionName, "-l", "CLAUDECODE= claude --dangerously-skip-permissions"],
         { timeout: 10_000 },
       );
       await execFileAsync("tmux", ["send-keys", "-t", sessionName, "Enter"], {

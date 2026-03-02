@@ -103,7 +103,10 @@ function normalizePluginModule(mod: unknown): PluginModule | null {
   return null;
 }
 
-function parsePluginEntry(entry: PluginConfigEntry): { moduleName: string; config?: Record<string, unknown> } {
+function parsePluginEntry(entry: PluginConfigEntry): {
+  moduleName: string;
+  config?: Record<string, unknown>;
+} {
   if (typeof entry === "string") {
     return { moduleName: entry };
   }

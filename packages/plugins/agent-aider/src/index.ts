@@ -9,7 +9,7 @@ import {
   type PluginModule,
   type RuntimeHandle,
   type Session,
-  CompletionDetector
+  CompletionDetector,
 } from "@composio/ao-core";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -67,7 +67,13 @@ export function createAiderAgent(): Agent {
     processName: "aider",
 
     getLaunchCommand(config: AgentLaunchConfig): string {
-      const args: string[] = ["aider", "--yes-always", "--yes", "--auto-commits", "--no-show-model-warnings"];
+      const args: string[] = [
+        "aider",
+        "--yes-always",
+        "--yes",
+        "--auto-commits",
+        "--no-show-model-warnings",
+      ];
       if (config.prompt) {
         args.push("--message", shellEscape(config.prompt));
       }
@@ -108,26 +114,26 @@ export function createAiderAgent(): Agent {
       const exitedAt = new Date();
       let running = false;
       if (session.runtimeHandle) {
-         running = await this.isProcessRunning(session.runtimeHandle);
+        running = await this.isProcessRunning(session.runtimeHandle);
       }
 
       if (!running && session.runtimeHandle) {
-         // Fake exit code 0 or 1 roughly based on last state could be used here. 
-         // Since aider doesn't easily expose exit code via tmux we assume 0 for completion checks.
-         detector.onProcessExit(0);
-         const res = detector.evaluate();
-         if (res.status === "completed") {
-            // Can be mapped to exited but normally orchestrator picks it up
-         }
-         return { state: "exited", timestamp: exitedAt };
+        // Fake exit code 0 or 1 roughly based on last state could be used here.
+        // Since aider doesn't easily expose exit code via tmux we assume 0 for completion checks.
+        detector.onProcessExit(0);
+        const res = detector.evaluate();
+        if (res.status === "completed") {
+          // Can be mapped to exited but normally orchestrator picks it up
+        }
+        return { state: "exited", timestamp: exitedAt };
       }
 
       // 1) Evaluate state through completion detector signals
       const hasCommitsFast = await detector.checkGitDiff();
       const res = detector.evaluate();
-      
+
       if (res.status === "completed") {
-         return { state: "exited", timestamp: new Date() };
+        return { state: "exited", timestamp: new Date() };
       }
 
       // Fallback heuristics:

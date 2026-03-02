@@ -41,7 +41,10 @@ export default async function Home() {
 
     // Enrich metadata (issue labels, agent summaries, issue titles) — cap at 3s
     const metaTimeout = new Promise<void>((resolve) => setTimeout(resolve, 3_000));
-    await Promise.race([enrichSessionsMetadata(coreSessions, sessions, config, registry), metaTimeout]);
+    await Promise.race([
+      enrichSessionsMetadata(coreSessions, sessions, config, registry),
+      metaTimeout,
+    ]);
 
     // Enrich sessions that have PRs with live SCM data
     // Skip enrichment for terminal sessions (merged, closed, done, terminated)
@@ -101,6 +104,11 @@ export default async function Home() {
   }
 
   return (
-    <Dashboard initialSessions={sessions} stats={computeStats(sessions)} orchestratorId={orchestratorId} projectName={projectName} />
+    <Dashboard
+      initialSessions={sessions}
+      stats={computeStats(sessions)}
+      orchestratorId={orchestratorId}
+      projectName={projectName}
+    />
   );
 }

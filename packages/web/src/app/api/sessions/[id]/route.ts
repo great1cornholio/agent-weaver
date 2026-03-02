@@ -27,7 +27,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       const project = resolveProject(coreSession, config.projects);
       const scm = getSCM(registry, project);
       if (scm) {
-        const cached = await enrichSessionPR(dashboardSession, scm, coreSession.pr, { cacheOnly: true });
+        const cached = await enrichSessionPR(dashboardSession, scm, coreSession.pr, {
+          cacheOnly: true,
+        });
         if (!cached) {
           // Nothing cached yet — block once to populate, then future calls use cache
           await enrichSessionPR(dashboardSession, scm, coreSession.pr);

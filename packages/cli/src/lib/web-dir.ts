@@ -29,9 +29,18 @@ export function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const s = new Socket();
     s.setTimeout(300);
-    s.once("connect", () => { s.destroy(); resolve(false); }); // something listening → in use
-    s.once("error", () => { s.destroy(); resolve(true); });    // ECONNREFUSED → free
-    s.once("timeout", () => { s.destroy(); resolve(true); });  // no response → free
+    s.once("connect", () => {
+      s.destroy();
+      resolve(false);
+    }); // something listening → in use
+    s.once("error", () => {
+      s.destroy();
+      resolve(true);
+    }); // ECONNREFUSED → free
+    s.once("timeout", () => {
+      s.destroy();
+      resolve(true);
+    }); // no response → free
     s.connect(port, "127.0.0.1");
   });
 }
@@ -80,8 +89,11 @@ export async function buildDashboardEnv(
 
   // If explicit ports provided (config or env var), use them directly.
   // Otherwise, auto-detect an available pair starting from the default.
-  const explicitTerminal = terminalPort ?? (env["TERMINAL_PORT"] ? parseInt(env["TERMINAL_PORT"], 10) : undefined);
-  const explicitDirect = directTerminalPort ?? (env["DIRECT_TERMINAL_PORT"] ? parseInt(env["DIRECT_TERMINAL_PORT"], 10) : undefined);
+  const explicitTerminal =
+    terminalPort ?? (env["TERMINAL_PORT"] ? parseInt(env["TERMINAL_PORT"], 10) : undefined);
+  const explicitDirect =
+    directTerminalPort ??
+    (env["DIRECT_TERMINAL_PORT"] ? parseInt(env["DIRECT_TERMINAL_PORT"], 10) : undefined);
 
   let resolvedTerminal: number;
   let resolvedDirect: number;

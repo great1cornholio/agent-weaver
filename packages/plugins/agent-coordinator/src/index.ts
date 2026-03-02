@@ -30,10 +30,9 @@ const SubtaskPlanSchema = z.object({
   subtasks: z.array(SubtaskSchema).min(1, "Plan must have at least 1 subtask"),
 });
 
-
 function validateDependencies(plan: z.infer<typeof SubtaskPlanSchema>) {
   const map = new Map<string, string[]>();
-  plan.subtasks.forEach(task => map.set(task.id, task.dependsOn || []));
+  plan.subtasks.forEach((task) => map.set(task.id, task.dependsOn || []));
 
   const visited = new Set<string>();
   const visiting = new Set<string>();
@@ -47,10 +46,10 @@ function validateDependencies(plan: z.infer<typeof SubtaskPlanSchema>) {
     visiting.add(id);
     const deps = map.get(id) || [];
     for (const dep of deps) {
-       if (!map.has(dep)) {
-           throw new Error(`Dependency ${dep} not found in plan for subtask ${id}`);
-       }
-       dfs(dep);
+      if (!map.has(dep)) {
+        throw new Error(`Dependency ${dep} not found in plan for subtask ${id}`);
+      }
+      dfs(dep);
     }
     visiting.delete(id);
     visited.add(id);
@@ -92,63 +91,69 @@ function createCoordinatorAgent(): Agent {
 
     async executeInline<T = unknown>(config: AgentLaunchConfig): Promise<T> {
       if (!config.inlineConfig?.endpoint) {
-         throw new Error("Coordinator needs inlineConfig.endpoint to reach LLM.");
+        throw new Error("Coordinator needs inlineConfig.endpoint to reach LLM.");
       }
 
       const prompt = config.prompt || "Create a simple implementation plan.";
-      
+
       const payload = {
         model: config.inlineConfig.model,
         messages: [
-          { role: "system", content: "You are the Coordinator Agent. Output valid JSON adhering to SubtaskPlan Schema: { strategy: 'tdd', subtasks: [{id:'..', agentType:'tester|developer|reviewer', description:'..'}] }" },
-          { role: "user", content: prompt }
+          {
+            role: "system",
+            content:
+              "You are the Coordinator Agent. Output valid JSON adhering to SubtaskPlan Schema: { strategy: 'tdd', subtasks: [{id:'..', agentType:'tester|developer|reviewer', description:'..'}] }",
+          },
+          { role: "user", content: prompt },
         ],
         response_format: { type: "json_object" },
-        temperature: 0.1
+        temperature: 0.1,
       };
 
       const headers: Record<string, string> = {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       };
 
       if (config.inlineConfig.auth?.token) {
-         headers["Authorization"] = `Bearer ${config.inlineConfig.auth.token}`;
+        headers["Authorization"] = `Bearer ${config.inlineConfig.auth.token}`;
       }
 
-      const url = config.inlineConfig.endpoint.endsWith("/chat/completions") 
-         ? config.inlineConfig.endpoint 
-         : `${config.inlineConfig.endpoint}/chat/completions`;
+      const url = config.inlineConfig.endpoint.endsWith("/chat/completions")
+        ? config.inlineConfig.endpoint
+        : `${config.inlineConfig.endpoint}/chat/completions`;
 
       console.log(`[Coordinator] Fetching plan from ${url}...`);
-      
+
       const response = await fetch(url, {
-         method: "POST",
-         headers,
-         body: JSON.stringify(payload)
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-         throw new Error(`LLM Error: ${response.status} ${response.statusText}`);
+        throw new Error(`LLM Error: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json() as { choices?: { message?: { content?: string } }[] };
+      const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
       const content = data.choices?.[0]?.message?.content;
       if (!content) throw new Error("Empty response from LLM");
 
       let parsed: unknown;
       try {
-         parsed = JSON.parse(content);
+        parsed = JSON.parse(content);
       } catch (e) {
-         throw new Error(`Invalid JSON from LLM: ${e}`);
+        throw new Error(`Invalid JSON from LLM: ${e}`);
       }
 
       const validated = SubtaskPlanSchema.parse(parsed);
 
       validateDependencies(validated);
 
-      console.log(`[Coordinator] Returning validated plan with ${validated.subtasks.length} subtasks.`);
+      console.log(
+        `[Coordinator] Returning validated plan with ${validated.subtasks.length} subtasks.`,
+      );
       return validated as T;
-    }
+    },
   };
 }
 

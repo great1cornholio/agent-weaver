@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import type { Mock } from "vitest";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   mkdtempSync,
@@ -17,6 +19,14 @@ import {
   getSessionsDir,
   getProjectBaseDir,
 } from "@composio/ao-core";
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return {
+    ...actual,
+    spawn: vi.fn(),
+  };
+});
 
 const { mockTmux, mockGit, mockGh, mockExec, mockConfigRef, mockSessionManager, sessionsDirRef } =
   vi.hoisted(() => ({
@@ -416,5 +426,60 @@ describe("session cleanup", () => {
 
     const output = consoleSpy.mock.calls.map((c) => String(c[0])).join("\n");
     expect(output).toContain("No sessions to clean up");
+  });
+});
+
+describe("session attach", () => {
+  it("rejects unknown session", async () => {
+    mockSessionManager.get.mockResolvedValue(null);
+
+    const program = new Command();
+    program.exitOverride();
+    registerSession(program);
+
+    await expect(
+      program.parseAsync(["node", "test", "session", "attach", "unknown-session"]),
+    ).rejects.toThrow();
+  });
+
+  it("attaches to tmux session via child_process spawn", async () => {
+    mockSessionManager.get.mockResolvedValue({
+      id: "active-session",
+      status: "working",
+      runtimeHandle: { runtimeName: "tmux", id: "random-hash-target" },
+    });
+
+    // Mock child_process.spawn return
+    const mockSpawnOn = vi.fn();
+    (spawn as Mock).mockReturnValue({ on: mockSpawnOn });
+
+    const program = new Command();
+    program.exitOverride();
+    registerSession(program);
+
+    await program.parseAsync(["node", "test", "session", "attach", "active-session"]);
+
+    expect(spawn).toHaveBeenCalledWith(
+      "tmux",
+      ["attach", "-t", "random-hash-target"],
+      expect.objectContaining({ stdio: "inherit" }),
+    );
+    expect(mockSpawnOn).toHaveBeenCalledWith("exit", expect.any(Function));
+  });
+
+  it("rejects non-tmux runtimes", async () => {
+    mockSessionManager.get.mockResolvedValue({
+      id: "docker-session",
+      status: "working",
+      runtimeHandle: { runtimeName: "docker", id: "docker-123" },
+    });
+
+    const program = new Command();
+    program.exitOverride();
+    registerSession(program);
+
+    await expect(
+      program.parseAsync(["node", "test", "session", "attach", "docker-session"]),
+    ).rejects.toThrow();
   });
 });

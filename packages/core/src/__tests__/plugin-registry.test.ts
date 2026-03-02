@@ -159,6 +159,7 @@ describe("loadBuiltins", () => {
 
     expect(registry.get("agent", "codex")).not.toBeNull();
     expect(registry.get("agent", "claude-code")).not.toBeNull();
+  });
   it("emits warning when built-in plugin import fails", async () => {
     const warnings: Array<{ code: string; moduleName: string }> = [];
     const registry = createPluginRegistry({
@@ -270,7 +271,10 @@ describe("loadFromConfig", () => {
 
     await registry.loadFromConfig(config, importFn);
 
-    const instance = registry.get<{ _config?: Record<string, unknown> }>("notifier", "custom-notifier");
+    const instance = registry.get<{ _config?: Record<string, unknown> }>(
+      "notifier",
+      "custom-notifier",
+    );
     expect(instance?._config).toEqual({ endpoint: "https://example.test/webhook" });
   });
 

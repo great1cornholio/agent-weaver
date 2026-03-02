@@ -75,16 +75,16 @@ ao spawn my-project 123
 
 Eight slots. Every abstraction is swappable.
 
-| Slot | Default | Alternatives |
-|------|---------|-------------|
-| Runtime | tmux | docker, k8s, process |
-| Agent | claude-code | codex, aider, opencode |
-| Workspace | worktree | clone |
-| Tracker | github | gitlab, linear |
-| SCM | github | gitlab |
-| Notifier | desktop | slack, composio, webhook |
-| Terminal | iterm2 | web |
-| Lifecycle | core | — |
+| Slot      | Default     | Alternatives             |
+| --------- | ----------- | ------------------------ |
+| Runtime   | tmux        | docker, k8s, process     |
+| Agent     | claude-code | codex, aider, opencode   |
+| Workspace | worktree    | clone                    |
+| Tracker   | github      | gitlab, linear           |
+| SCM       | github      | gitlab                   |
+| Notifier  | desktop     | slack, composio, webhook |
+| Terminal  | iterm2      | web                      |
+| Lifecycle | core        | —                        |
 
 All interfaces defined in [`packages/core/src/types.ts`](packages/core/src/types.ts). A plugin implements one interface and exports a `PluginModule`. That's it.
 
@@ -124,8 +124,8 @@ projects:
     path: ~/my-app
     defaultBranch: main
     sessionPrefix: app
-    scm: gitlab        # Utilize GitLab Merge Requests
-    tracker: gitlab    # Track via GitLab Issues
+    scm: gitlab # Utilize GitLab Merge Requests
+    tracker: gitlab # Track via GitLab Issues
 
 reactions:
   ci-failed:
@@ -137,7 +137,7 @@ reactions:
     action: send-to-agent
     escalateAfter: 30m
   approved-and-green:
-    auto: false       # flip to true for auto-merge
+    auto: false # flip to true for auto-merge
     action: notify
 ```
 
@@ -172,7 +172,7 @@ Running one AI agent in a terminal is easy. Running 30 across different issues, 
 - Git 2.25+
 - tmux (for default runtime)
 - `gh` CLI (for GitHub) or `glab` CLI (for GitLab)
-- *Optional*: GPU with local VRAM for local models
+- _Optional_: GPU with local VRAM for local models
 
 ## Development
 
@@ -185,7 +185,10 @@ pnpm dev                       # Start web dashboard dev server
 See [`CLAUDE.md`](CLAUDE.md) for code conventions and architecture details.
 
 ## Documentation
+
 - [Setup Guide](SETUP.md)
-- [Plugin Authoring](docs/PLUGIN_AUTHORING.md)
-- [GitLab Setup Guide](docs/GITLAB_SETUP.md)
+- [Plugin Authoring](docs/guides/PLUGIN_AUTHORING.md)
+- [GitLab Setup Guide](docs/guides/GITLAB_SETUP.md)
+- [Development Guide](docs/guides/DEVELOPMENT.md)
+- [Rebase Strategy](docs/guides/REBASE_STRATEGY.md)
 - [Troubleshooting](TROUBLESHOOTING.md)

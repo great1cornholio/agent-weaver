@@ -55,9 +55,7 @@ export function sessionToDashboard(session: Session): DashboardSession {
     issueLabel: null, // Will be enriched by enrichSessionIssue()
     issueTitle: null, // Will be enriched by enrichSessionIssueTitle()
     summary,
-    summaryIsFallback: agentSummary
-      ? (session.agentInfo?.summaryIsFallback ?? false)
-      : false,
+    summaryIsFallback: agentSummary ? (session.agentInfo?.summaryIsFallback ?? false) : false,
     createdAt: session.createdAt.toISOString(),
     lastActivityAt: session.lastActivityAt.toISOString(),
     pr: session.pr ? basicPRToDashboard(session.pr) : null,

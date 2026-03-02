@@ -32,7 +32,6 @@ const availablePorts = new Set<number>(); // Pool of recycled ports
 let nextPort = 7800; // Start ttyd instances from port 7800
 const MAX_PORT = 7900; // Prevent unbounded port allocation
 
-
 /**
  * Check if ttyd is ready to accept connections by making a test request.
  * Returns a promise that resolves when ttyd is ready or rejects after timeout.

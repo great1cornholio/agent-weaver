@@ -87,7 +87,14 @@ export default function SessionPage() {
       if (!res.ok) return;
       const body = (await res.json()) as { sessions: DashboardSession[] };
       const sessions = body.sessions ?? [];
-      const counts: ZoneCounts = { merge: 0, respond: 0, review: 0, pending: 0, working: 0, done: 0 };
+      const counts: ZoneCounts = {
+        merge: 0,
+        respond: 0,
+        review: 0,
+        pending: 0,
+        working: 0,
+        done: 0,
+      };
       for (const s of sessions) {
         if (!s.id.endsWith("-orchestrator")) {
           counts[getAttentionLevel(s) as AttentionLevel]++;
@@ -127,7 +134,9 @@ export default function SessionPage() {
   if (error || !session) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[var(--color-bg-base)]">
-        <div className="text-[13px] text-[var(--color-status-error)]">{error ?? "Session not found"}</div>
+        <div className="text-[13px] text-[var(--color-status-error)]">
+          {error ?? "Session not found"}
+        </div>
         <a href="/" className="text-[12px] text-[var(--color-accent)] hover:underline">
           ← Back to dashboard
         </a>

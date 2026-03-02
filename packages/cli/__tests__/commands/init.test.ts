@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { createServer } from "node:net";
 
 import { Command } from "commander";
 import { parse as yamlParse } from "yaml";
@@ -20,7 +21,7 @@ beforeEach(() => {
 
 afterEach(() => {
   if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
 });
 
 describe("init command", () => {
@@ -96,27 +97,23 @@ describe("init command", () => {
     const outputPath = join(tmpDir, "agent-orchestrator.yaml");
 
     // Occupy port 3000
-    const blocker = createServer();
-    await new Promise<void>((resolve) => {
-      blocker.listen(3000, "127.0.0.1", () => resolve());
+    vi.mocked(isPortAvailable).mockImplementation(async (port) => {
+      if (port === 3000) return false;
+      return true;
     });
 
-    try {
-      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-      const program = new Command();
-      program.exitOverride();
-      registerInit(program);
+    const program = new Command();
+    program.exitOverride();
+    registerInit(program);
 
-      await program.parseAsync(["node", "test", "init", "--auto", "--output", outputPath]);
+    await program.parseAsync(["node", "test", "init", "--auto", "--output", outputPath]);
 
-      const logCalls = logSpy.mock.calls.map((args) => args.join(" "));
-      const busyMessage = logCalls.find((msg) => msg.includes("Port 3000 is busy"));
-      expect(busyMessage).toBeDefined();
-      expect(busyMessage).toContain("instead");
-    } finally {
-      await new Promise<void>((resolve) => blocker.close(() => resolve()));
-    }
+    const logCalls = logSpy.mock.calls.map((args) => args.join(" "));
+    const busyMessage = logCalls.find((msg) => msg.includes("Port 3000 is busy"));
+    expect(busyMessage).toBeDefined();
+    expect(busyMessage).toContain("instead");
   });
 
   it("auto mode writes name and sessionPrefix to project config", async () => {

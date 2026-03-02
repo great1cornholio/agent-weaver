@@ -302,7 +302,11 @@ export function registerStatus(program: Command): void {
           }
 
           if (!opts.json) {
-            console.log(chalk.yellow(`  SCM plugin unavailable for project (${scmName}); PR/CI/review data skipped.`));
+            console.log(
+              chalk.yellow(
+                `  SCM plugin unavailable for project (${scmName}); PR/CI/review data skipped.`,
+              ),
+            );
             console.log();
           }
           continue;

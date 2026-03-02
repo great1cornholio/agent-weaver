@@ -129,7 +129,9 @@ describe("Claude Code Activity Detection", () => {
     });
 
     it("returns 'exited' when runtimeHandle is null", async () => {
-      expect((await agent.getActivityState(makeSession({ runtimeHandle: null })))?.state).toBe("exited");
+      expect((await agent.getActivityState(makeSession({ runtimeHandle: null })))?.state).toBe(
+        "exited",
+      );
     });
 
     // -----------------------------------------------------------------------

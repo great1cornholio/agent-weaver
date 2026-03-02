@@ -81,4 +81,3 @@ export function getSCM(registry: PluginRegistry, project: ProjectConfig | undefi
   if (!project?.scm) return null;
   return registry.get<SCM>("scm", project.scm.plugin);
 }
-

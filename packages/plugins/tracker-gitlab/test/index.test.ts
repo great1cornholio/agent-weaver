@@ -162,7 +162,9 @@ describe("tracker-gitlab plugin", () => {
 
     it("uses GITLAB_HOST env when configured", () => {
       vi.stubEnv("GITLAB_HOST", "http://192.168.1.190:9080");
-      expect(tracker.issueUrl("42", project)).toBe("http://192.168.1.190:9080/group/repo/-/issues/42");
+      expect(tracker.issueUrl("42", project)).toBe(
+        "http://192.168.1.190:9080/group/repo/-/issues/42",
+      );
       vi.unstubAllEnvs();
     });
   });

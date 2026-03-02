@@ -1,0 +1,130 @@
+# Mock full config — multi-project + multi-agent example
+# Copy to: agent-orchestrator.yaml
+
+dataDir: ~/.agent-orchestrator
+worktreeDir: ~/.worktrees
+port: 3000
+
+# Optional: if running multiple dashboards
+# terminalPort: 14800
+# directTerminalPort: 14801
+
+defaults:
+  runtime: tmux
+  agent: claude-code
+  workspace: worktree
+  notifiers: [desktop]
+
+# Optional external plugins (Epic 6)
+plugins:
+  tracker:
+    - "@composio/ao-plugin-tracker-gitlab"
+  scm:
+    - "@composio/ao-plugin-scm-gitlab"
+
+projects:
+  web-app:
+    name: Web App
+    repo: acme/web-app
+    path: ~/dev/web-app
+    defaultBranch: main
+    sessionPrefix: web
+    workflow: simple
+    agent: claude-code
+    scm:
+      plugin: github
+    tracker:
+      plugin: github
+    symlinks: [.env.local, .claude]
+    postCreate:
+      - "pnpm install"
+    agentConfig:
+      permissions: skip
+      model: opus
+    agentRules: |
+      Run tests before push.
+      Keep PRs focused and small.
+
+  platform-api:
+    name: Platform API
+    repo: acme/platform-api
+    path: ~/dev/platform-api
+    defaultBranch: main
+    sessionPrefix: api
+    workflow: full
+    agent: codex
+    scm:
+      plugin: github
+    tracker:
+      plugin: linear
+      teamId: "team-1234"
+    symlinks: [.env, .claude]
+    postCreate:
+      - "pnpm install"
+      - "pnpm build"
+    agentConfig:
+      permissions: skip
+      model: gpt-5
+    agentRulesFile: .agent-rules.md
+    reactions:
+      approved-and-green:
+        auto: true
+
+  sandbox-gitlab:
+    name: Sandbox GitLab
+    repo: acme/sandbox-gitlab
+    path: ~/dev/sandbox-gitlab
+    defaultBranch: main
+    sessionPrefix: sbx
+    workflow: simple
+    agent: aider
+    scm:
+      plugin: gitlab
+    tracker:
+      plugin: gitlab
+    symlinks: [.claude]
+    agentConfig:
+      permissions: skip
+      model: sonnet
+
+# Notification channels
+notifiers:
+  desktop:
+    plugin: desktop
+  slack:
+    plugin: slack
+    webhook: ${SLACK_WEBHOOK_URL}
+    channel: "#agent-updates"
+  webhook:
+    plugin: webhook
+    url: ${DEPLOY_WEBHOOK_URL}
+
+# Routing by event priority
+notificationRouting:
+  urgent: [desktop, slack]
+  action: [desktop, slack]
+  warning: [slack]
+  info: [desktop]
+
+# Global reactions
+reactions:
+  ci-failed:
+    auto: true
+    action: send-to-agent
+    retries: 2
+    escalateAfter: 2
+
+  changes-requested:
+    auto: true
+    action: send-to-agent
+    escalateAfter: 30m
+
+  approved-and-green:
+    auto: false
+    action: notify
+    priority: action
+
+  agent-stuck:
+    threshold: 10m
+    action: notify
+    priority: urgent

@@ -63,36 +63,41 @@ export function registerSpawn(program: Command): void {
     .option("--open", "Open session in terminal tab")
     .option("--agent <name>", "Override the agent plugin (e.g. codex, claude-code)")
     .option("--no-preflight", "Skip spawn preflight checks (project/env/binaries)")
-    .action(async (projectId: string, issueId: string | undefined, opts: { open?: boolean; agent?: string; preflight?: boolean }) => {
-      const config = loadConfig();
-      if (!config.projects[projectId]) {
-        console.error(
-          chalk.red(
-            `Unknown project: ${projectId}\nAvailable: ${Object.keys(config.projects).join(", ")}`,
-          ),
-        );
-        process.exit(1);
-      }
-
-      try {
-        if (opts.preflight !== false) {
-          const preflight = await runSpawnPreflight(config, projectId, {
-            issueProvided: Boolean(issueId),
-          });
-          if (!preflight.ok) {
-            throw new Error(formatPreflightReport(preflight));
-          }
-          if (preflight.messages.length > 0) {
-            console.log(chalk.yellow(formatPreflightReport(preflight)));
-            console.log();
-          }
+    .action(
+      async (
+        projectId: string,
+        issueId: string | undefined,
+        opts: { open?: boolean; agent?: string; preflight?: boolean },
+      ) => {
+        const config = loadConfig();
+        if (!config.projects[projectId]) {
+          console.error(
+            chalk.red(
+              `Unknown project: ${projectId}\nAvailable: ${Object.keys(config.projects).join(", ")}`,
+            ),
+          );
+          process.exit(1);
         }
 
-        await spawnSession(config, projectId, issueId, opts.open, opts.agent);
-      } catch (err) {
-        console.error(chalk.red(`✗ ${err}`));
-        process.exit(1);
-      }
+        try {
+          if (opts.preflight !== false) {
+            const preflight = await runSpawnPreflight(config, projectId, {
+              issueProvided: Boolean(issueId),
+            });
+            if (!preflight.ok) {
+              throw new Error(formatPreflightReport(preflight));
+            }
+            if (preflight.messages.length > 0) {
+              console.log(chalk.yellow(formatPreflightReport(preflight)));
+              console.log();
+            }
+          }
+
+          await spawnSession(config, projectId, issueId, opts.open, opts.agent);
+        } catch (err) {
+          console.error(chalk.red(`✗ ${err}`));
+          process.exit(1);
+        }
       },
     );
 }
@@ -105,106 +110,114 @@ export function registerBatchSpawn(program: Command): void {
     .argument("<issues...>", "Issue identifiers")
     .option("--open", "Open sessions in terminal tabs")
     .option("--no-preflight", "Skip spawn preflight checks (project/env/binaries)")
-    .action(async (projectId: string, issues: string[], opts: { open?: boolean; preflight?: boolean }) => {
-      const config = loadConfig();
-      if (!config.projects[projectId]) {
-        console.error(
-          chalk.red(
-            `Unknown project: ${projectId}\nAvailable: ${Object.keys(config.projects).join(", ")}`,
-          ),
-        );
-        process.exit(1);
-      }
-
-      console.log(banner("BATCH SESSION SPAWNER"));
-      console.log();
-      console.log(`  Project: ${chalk.bold(projectId)}`);
-      console.log(`  Issues:  ${issues.join(", ")}`);
-      console.log();
-
-      if (opts.preflight !== false) {
-        const preflight = await runSpawnPreflight(config, projectId, {
-          issueProvided: issues.length > 0,
-        });
-        if (!preflight.ok) {
-          console.error(chalk.red(formatPreflightReport(preflight)));
+    .action(
+      async (
+        projectId: string,
+        issues: string[],
+        opts: { open?: boolean; preflight?: boolean },
+      ) => {
+        const config = loadConfig();
+        if (!config.projects[projectId]) {
+          console.error(
+            chalk.red(
+              `Unknown project: ${projectId}\nAvailable: ${Object.keys(config.projects).join(", ")}`,
+            ),
+          );
           process.exit(1);
         }
-        if (preflight.messages.length > 0) {
-          console.log(chalk.yellow(formatPreflightReport(preflight)));
-          console.log();
-        }
-      }
 
-      const sm = await getSessionManager(config);
-      const created: Array<{ session: string; issue: string }> = [];
-      const skipped: Array<{ issue: string; existing: string }> = [];
-      const failed: Array<{ issue: string; error: string }> = [];
-      const spawnedIssues = new Set<string>();
+        console.log(banner("BATCH SESSION SPAWNER"));
+        console.log();
+        console.log(`  Project: ${chalk.bold(projectId)}`);
+        console.log(`  Issues:  ${issues.join(", ")}`);
+        console.log();
 
-      // Load existing sessions once before the loop to avoid repeated reads + enrichment.
-      // Exclude dead/killed sessions so crashed sessions don't block respawning.
-      const deadStatuses = new Set(["killed", "done", "exited"]);
-      const existingSessions = await sm.list(projectId);
-      const existingIssueMap = new Map(
-        existingSessions
-          .filter((s) => s.issueId && !deadStatuses.has(s.status))
-          .map((s) => [s.issueId!.toLowerCase(), s.id]),
-      );
-
-      for (const issue of issues) {
-        // Duplicate detection — check both existing sessions and same-run duplicates
-        if (spawnedIssues.has(issue.toLowerCase())) {
-          console.log(chalk.yellow(`  Skip ${issue} — duplicate in this batch`));
-          skipped.push({ issue, existing: "(this batch)" });
-          continue;
+        if (opts.preflight !== false) {
+          const preflight = await runSpawnPreflight(config, projectId, {
+            issueProvided: issues.length > 0,
+          });
+          if (!preflight.ok) {
+            console.error(chalk.red(formatPreflightReport(preflight)));
+            process.exit(1);
+          }
+          if (preflight.messages.length > 0) {
+            console.log(chalk.yellow(formatPreflightReport(preflight)));
+            console.log();
+          }
         }
 
-        // Check existing sessions (pre-loaded before loop)
-        const existingSessionId = existingIssueMap.get(issue.toLowerCase());
-        if (existingSessionId) {
-          console.log(chalk.yellow(`  Skip ${issue} — already has session: ${existingSessionId}`));
-          skipped.push({ issue, existing: existingSessionId });
-          continue;
+        const sm = await getSessionManager(config);
+        const created: Array<{ session: string; issue: string }> = [];
+        const skipped: Array<{ issue: string; existing: string }> = [];
+        const failed: Array<{ issue: string; error: string }> = [];
+        const spawnedIssues = new Set<string>();
+
+        // Load existing sessions once before the loop to avoid repeated reads + enrichment.
+        // Exclude dead/killed sessions so crashed sessions don't block respawning.
+        const deadStatuses = new Set(["killed", "done", "exited"]);
+        const existingSessions = await sm.list(projectId);
+        const existingIssueMap = new Map(
+          existingSessions
+            .filter((s) => s.issueId && !deadStatuses.has(s.status))
+            .map((s) => [s.issueId!.toLowerCase(), s.id]),
+        );
+
+        for (const issue of issues) {
+          // Duplicate detection — check both existing sessions and same-run duplicates
+          if (spawnedIssues.has(issue.toLowerCase())) {
+            console.log(chalk.yellow(`  Skip ${issue} — duplicate in this batch`));
+            skipped.push({ issue, existing: "(this batch)" });
+            continue;
+          }
+
+          // Check existing sessions (pre-loaded before loop)
+          const existingSessionId = existingIssueMap.get(issue.toLowerCase());
+          if (existingSessionId) {
+            console.log(
+              chalk.yellow(`  Skip ${issue} — already has session: ${existingSessionId}`),
+            );
+            skipped.push({ issue, existing: existingSessionId });
+            continue;
+          }
+
+          try {
+            const sessionName = await spawnSession(config, projectId, issue, opts.open);
+            created.push({ session: sessionName, issue });
+            spawnedIssues.add(issue.toLowerCase());
+          } catch (err) {
+            const message = String(err);
+            console.error(chalk.red(`  ✗ ${issue} — ${err}`));
+            failed.push({ issue, error: message });
+          }
+
+          // Small delay between spawns
+          await new Promise((r) => setTimeout(r, 500));
         }
 
-        try {
-          const sessionName = await spawnSession(config, projectId, issue, opts.open);
-          created.push({ session: sessionName, issue });
-          spawnedIssues.add(issue.toLowerCase());
-        } catch (err) {
-          const message = String(err);
-          console.error(chalk.red(`  ✗ ${issue} — ${err}`));
-          failed.push({ issue, error: message });
-        }
+        console.log(chalk.bold("\nSummary:"));
+        console.log(`  Created: ${chalk.green(String(created.length))} sessions`);
+        console.log(`  Skipped: ${chalk.yellow(String(skipped.length))} (duplicate)`);
+        console.log(`  Failed:  ${chalk.red(String(failed.length))}`);
 
-        // Small delay between spawns
-        await new Promise((r) => setTimeout(r, 500));
-      }
-
-      console.log(chalk.bold("\nSummary:"));
-      console.log(`  Created: ${chalk.green(String(created.length))} sessions`);
-      console.log(`  Skipped: ${chalk.yellow(String(skipped.length))} (duplicate)`);
-      console.log(`  Failed:  ${chalk.red(String(failed.length))}`);
-
-      if (created.length > 0) {
-        console.log(chalk.bold("\nCreated sessions:"));
-        for (const { session, issue } of created) {
-          console.log(`  ${chalk.green(session)} -> ${issue}`);
+        if (created.length > 0) {
+          console.log(chalk.bold("\nCreated sessions:"));
+          for (const { session, issue } of created) {
+            console.log(`  ${chalk.green(session)} -> ${issue}`);
+          }
         }
-      }
-      if (skipped.length > 0) {
-        console.log(chalk.bold("\nSkipped (duplicate):"));
-        for (const { issue, existing } of skipped) {
-          console.log(`  ${issue} -> existing: ${existing}`);
+        if (skipped.length > 0) {
+          console.log(chalk.bold("\nSkipped (duplicate):"));
+          for (const { issue, existing } of skipped) {
+            console.log(`  ${issue} -> existing: ${existing}`);
+          }
         }
-      }
-      if (failed.length > 0) {
-        console.log(chalk.yellow(`\n${failed.length} failed:`));
-        failed.forEach((f) => {
-          console.log(chalk.dim(`  - ${f.issue}: ${f.error}`));
-        });
-      }
-      console.log();
-    });
+        if (failed.length > 0) {
+          console.log(chalk.yellow(`\n${failed.length} failed:`));
+          failed.forEach((f) => {
+            console.log(chalk.dim(`  - ${f.issue}: ${f.error}`));
+          });
+        }
+        console.log();
+      },
+    );
 }

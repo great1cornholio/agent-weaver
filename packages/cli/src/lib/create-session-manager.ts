@@ -54,4 +54,3 @@ export async function getSessionManager(config: OrchestratorConfig): Promise<Ses
   const registry = await getRegistry(config);
   return createSessionManager({ config, registry });
 }
-

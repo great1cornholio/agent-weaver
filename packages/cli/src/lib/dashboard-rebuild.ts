@@ -54,7 +54,9 @@ export async function waitForPortFree(port: number, timeoutMs: number): Promise<
     if (!pid) return;
     await new Promise((r) => setTimeout(r, 200));
   }
-  throw new Error(`Port ${port} still in use after ${timeoutMs}ms — old process did not exit in time`);
+  throw new Error(
+    `Port ${port} still in use after ${timeoutMs}ms — old process did not exit in time`,
+  );
 }
 
 /**
@@ -71,4 +73,3 @@ export async function cleanNextCache(webDir: string): Promise<void> {
     spinner.succeed(`Cleaned .next build cache (${webDir})`);
   }
 }
-

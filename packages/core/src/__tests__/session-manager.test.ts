@@ -212,7 +212,8 @@ describe("spawn", () => {
 
     const session = await sm.spawn({
       projectId: "my-app",
-      issueId: "this is a very long issue description that should be truncated to sixty characters maximum",
+      issueId:
+        "this is a very long issue description that should be truncated to sixty characters maximum",
     });
 
     expect(session.branch!.replace("feat/", "").length).toBeLessThanOrEqual(60);
@@ -652,9 +653,9 @@ describe("spawn", () => {
     it("throws when agent override plugin is not found", async () => {
       const sm = createSessionManager({ config, registry: registryWithMultipleAgents });
 
-      await expect(
-        sm.spawn({ projectId: "my-app", agent: "nonexistent" }),
-      ).rejects.toThrow("Agent plugin 'nonexistent' not found");
+      await expect(sm.spawn({ projectId: "my-app", agent: "nonexistent" })).rejects.toThrow(
+        "Agent plugin 'nonexistent' not found",
+      );
     });
 
     it("uses default agent when no override specified", async () => {

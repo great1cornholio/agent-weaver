@@ -69,9 +69,7 @@ describe("OrchestratorConfig compatibility", () => {
       "utf-8",
     );
 
-    const configMatch = typesSource.match(
-      /export interface OrchestratorConfig \{[\s\S]*?\n\}/,
-    );
+    const configMatch = typesSource.match(/export interface OrchestratorConfig \{[\s\S]*?\n\}/);
     expect(configMatch).toBeTruthy();
     const configBlock = configMatch![0];
 

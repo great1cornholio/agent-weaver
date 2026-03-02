@@ -159,9 +159,7 @@ export function registerReviewCheck(program: Command): void {
             await exec("tmux", ["send-keys", "-t", result.tmuxTarget, "C-u"]);
             await new Promise((resolve) => setTimeout(resolve, 200));
             const reviewCmd =
-              result.scmName === "gitlab"
-                ? "glab mr view --comments"
-                : "gh pr view --comments";
+              result.scmName === "gitlab" ? "glab mr view --comments" : "gh pr view --comments";
             const message = `There are review comments on your ${result.scmName === "gitlab" ? "MR" : "PR"}. Check with \`${reviewCmd}\` for details, address each comment, push fixes, and reply.`;
             await exec("tmux", ["send-keys", "-t", result.tmuxTarget, "-l", message]);
             await new Promise((resolve) => setTimeout(resolve, 200));

@@ -301,8 +301,12 @@ describe("Epic 1 E2E alpha flow (integration)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(payload.reply_markup.inline_keyboard).toHaveLength(2);
-    expect(payload.reply_markup.inline_keyboard[0][0].callback_data).toContain("/api/hitl/merge/tst-1");
-    expect(payload.reply_markup.inline_keyboard[1][0].callback_data).toContain("/api/hitl/reject/tst-1");
+    expect(payload.reply_markup.inline_keyboard[0][0].callback_data).toContain(
+      "/api/hitl/merge/tst-1",
+    );
+    expect(payload.reply_markup.inline_keyboard[1][0].callback_data).toContain(
+      "/api/hitl/reject/tst-1",
+    );
     expect(payload.text).toContain("pr.created");
   });
 
