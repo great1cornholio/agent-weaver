@@ -110,6 +110,12 @@ projects:
     #   plugin: linear
     #   teamId: "your-team-id"
 
+    # Ticket-driven execution mode routing
+    # defaultExecutionMode: implement   # implement | test
+    # executionModeLabels:
+    #   implement: [mode:implement]
+    #   test: [mode:test-only, mode:test]
+
     # Files to symlink into workspaces
     # symlinks: [.env, .claude]
 

@@ -264,4 +264,139 @@ rozbudowuj do "full workflow" z wieloma agentami.
 
 ---
 
+## R-009: Skills roadmap --- kandydaci do wyboru
+
+Poniższa tabela zbiera kandydatów na "skille" dla Agent Weavera.
+To nie jest backlog do ślepej realizacji 1:1 --- celem jest ułatwienie wyboru,
+co naprawdę wzmacnia przewagę projektu jako:
+
+- orchestratora dla **lokalnych LLM/GPU**,
+- systemu z **planowaniem zasobów**,
+- platformy z **rolami agentów**.
+
+### Skala rekomendacji
+
+- **Build now** --- mocny kandydat do najbliższych wersji
+- **Build later** --- wartościowe, ale po ustabilizowaniu fundamentów
+- **Explore** --- kierunek badawczy / eksperymentalny
+- **Avoid for now** --- ciekawe, ale nieopłacalne na tym etapie
+
+### Skala priorytetu
+
+- **P0** --- krytyczne dla przewagi produktu
+- **P1** --- bardzo ważne po fundamencie
+- **P2** --- przydatne, ale nieblokujące
+- **P3** --- eksperymentalne lub niszowe
+
+| Skill | Obszar | Zysk | Złożoność | Priorytet | Rekomendacja |
+| --- | --- | --- | --- | --- | --- |
+| Semantic code navigation | Core coding | Dużo lepsze poruszanie się po repo, mniej halucynacji lokalnych modeli | Średnia | P0 | Build now |
+| Intelligent repo search | Core coding | Lepsze trafianie w właściwe pliki i moduły | Średnia | P0 | Build now |
+| Targeted file context packing | Core coding | Mniejsze zużycie kontekstu, lepsza precyzja | Średnia | P0 | Build now |
+| Diff summarization | Core coding / review | Lepszy reviewer, lepsze statusy dla człowieka i orchestratora | Niska | P1 | Build now |
+| Architecture-aware context | Core coding | Mniej przypadkowych naruszeń granic architektury | Średnia | P1 | Build later |
+| Test runner skill | Quality | Fundament autonomicznej pracy agentów | Niska | P0 | Build now |
+| Lint and formatter skill | Quality | Tanie zwycięstwa, mniej hałasu w feedback loop | Niska | P0 | Build now |
+| Failing test triage | Quality | Szybsze rozróżnianie regresji, flaky, env i realnych błędów | Średnia | P1 | Build now |
+| TDD guard skill | Quality / workflow | Wzmacnia role tester/developer i pipeline red → green | Średnia | P1 | Build now |
+| Coverage-aware suggestions | Quality | Podnosi jakość testów, ale nie jest konieczne na start | Średnia | P2 | Build later |
+| Reviewer skill | Review | Jeden z głównych wyróżników rolowego workflow | Średnia | P0 | Build now |
+| Security review skill | Review | Wysoka wartość praktyczna dla PR/MR review | Średnia | P1 | Build later |
+| Performance review skill | Review | Przydatne, ale trudniejsze do zrobienia dobrze | Średnia | P2 | Build later |
+| Regression risk assessment | Review | Lepsze decyzje merge / release / escalation | Średnia | P1 | Build later |
+| PR/MR comment responder | Review / SCM | Bardzo wysoki ROI operacyjny | Średnia | P0 | Build now |
+| Task decomposition skill | Planning | Klucz do sensownej wieloagentowości | Średnia | P0 | Build now |
+| Complexity classifier | Planning | Pozwala rozróżnić simple workflow vs full workflow | Niska | P1 | Build now |
+| Role assignment skill | Planning | Łączy planowanie z systemem ról agentów | Średnia | P1 | Build now |
+| Dependency graph builder | Planning | Umożliwia topologiczne wykonanie subtasków | Średnia | P1 | Build now |
+| Escalation policy skill | Planning / UX | Mniej bezsensownych blokad i lepszy handoff do człowieka | Średnia | P1 | Build later |
+| Model routing skill | Resource planning | Jedna z największych przewag lokalnego orchestratora | Średnia | P0 | Build now |
+| VRAM placement skill | Resource planning | Core przewagi Agent Weavera wobec upstream | Średnia | P0 | Build now |
+| Warm-model reuse | Resource planning | Lepsza latencja i mniejsze marnowanie zasobów | Średnia | P1 | Build later |
+| Cost/latency aware scheduling | Resource planning | Lepszy trade-off jakość vs szybkość vs koszt | Wysoka | P2 | Build later |
+| Queue prioritization skill | Resource planning | Lepsza przewidywalność kolejki i obsługa blockerów | Średnia | P1 | Build now |
+| Capacity forecasting | Resource planning | Przydatne dla dashboardu i planowania pracy | Średnia | P2 | Build later |
+| Issue understanding skill | Tracker | Lepsze wyciąganie acceptance criteria z ticketów | Niska | P1 | Build now |
+| Issue enrichment skill | Tracker | Pomaga orchestratorowi i planowaniu, ale nie jest krytyczne | Niska | P2 | Build later |
+| Branch/PR strategy skill | SCM | Lepszy porządek i reviewability zmian | Niska | P2 | Build later |
+| Merge readiness skill | SCM | Praktyczne domknięcie workflow PR/MR | Średnia | P1 | Build later |
+| Rebase / conflict triage skill | SCM | Bardzo cenne, ale trudne semantycznie | Wysoka | P2 | Explore |
+| Browser verification skill | Frontend | Bardzo duży ROI dla UI i smoke verification | Średnia | P1 | Build later |
+| Screenshot diff / visual validation | Frontend | Dobre uzupełnienie frontendu i review | Średnia | P2 | Build later |
+| Figma/design context skill | Frontend | Przydatne dla frontend teams, ale wtórne wobec core | Średnia | P2 | Build later |
+| Storybook/component inspection | Frontend | Wartościowe dla UI repos, ale nie uniwersalne | Średnia | P2 | Build later |
+| Logs triage skill | Debugging | Bardzo praktyczne dla fix loops i CI | Średnia | P1 | Build now |
+| Incident/debug skill | Debugging | Silne wsparcie dla production-like tasks | Wysoka | P1 | Build later |
+| CI failure analyzer | Debugging / CI | Jeden z najlepszych skillów do automatyzacji feedbacku | Średnia | P0 | Build now |
+| Flaky test detector | Debugging / Quality | Dobre, ale z natury trudne i podatne na false positive | Wysoka | P2 | Explore |
+| Project memory skill | Memory | Długofalowa poprawa jakości agentów i ciągłości pracy | Średnia | P1 | Build later |
+| Session continuity skill | Memory | Bardzo przydatne dla długich tasków i restartów | Średnia | P1 | Build later |
+| Decision log skill | Memory / governance | Dobre dla review i architektury, ale nie krytyczne | Niska | P2 | Build later |
+| Clarification question skill | Human interaction | Ogromny wpływ na UX przy małym koszcie | Niska | P1 | Build now |
+| Status summarization skill | Human interaction | Bardzo przydatne dla orchestratora i dashboardu | Niska | P1 | Build now |
+| Decision handoff skill | Human interaction | Czytelniejsze proszenie człowieka o decyzję | Niska | P1 | Build later |
+| Multi-agent debate | Experimental | Potencjalnie wysoka jakość, ale wysoki koszt i złożoność | Wysoka | P3 | Avoid for now |
+| Self-critique skill | Experimental | Może poprawić słabsze modele lokalne | Średnia | P2 | Explore |
+| Dynamic model swapping | Experimental / resources | Strategicznie ważne dla local-first, ale trudne operacyjnie | Wysoka | P1 | Explore |
+| Federation skill | Experimental / distributed | Silnie zgodne z wizją multi-host, ale bardzo drogie implementacyjnie | Bardzo wysoka | P3 | Explore |
+| Skill marketplace / external bundles | Platform | Dobre dopiero po ustabilizowaniu rdzenia | Wysoka | P3 | Avoid for now |
+
+### Rekomendowany pakiet startowy (najmocniejszy fit do Agent Weavera)
+
+Jeśli trzeba wybrać **mały zestaw skilli o najwyższym ROI**, rekomendacja jest taka:
+
+#### Pakiet A --- "core local orchestrator"
+
+- Semantic code navigation
+- Targeted file context packing
+- Test runner skill
+- Lint and formatter skill
+- Reviewer skill
+- Task decomposition skill
+- Model routing skill
+- VRAM placement skill
+- CI failure analyzer
+
+**Dlaczego:** ten zestaw najmocniej wzmacnia to, co odróżnia projekt od upstream:
+lokalne modele, planowanie zasobów, role agentów i autonomiczne pętle naprawcze.
+
+#### Pakiet B --- "role-based workflow"
+
+- PR/MR comment responder
+- Complexity classifier
+- Role assignment skill
+- Dependency graph builder
+- TDD guard skill
+- Status summarization skill
+
+**Dlaczego:** ten pakiet naturalnie rozwija orchestratora, coordinatora, testera,
+developera i reviewera w spójny workflow.
+
+#### Pakiet C --- "next wave"
+
+- Logs triage skill
+- Project memory skill
+- Session continuity skill
+- Warm-model reuse
+- Browser verification skill
+
+**Dlaczego:** to bardzo wartościowe rozszerzenia po ustabilizowaniu rdzenia.
+
+### Krótka rekomendacja produktowa
+
+Jeśli roadmapa ma wspierać pozycjonowanie projektu jako:
+
+> "agent-orchestrator dla lokalnych LLM/GPU, z planowaniem zasobów i rolami agentów"
+
+to najbezpieczniejsza kolejność inwestycji wygląda tak:
+
+1. **Najpierw skille wzmacniające local-first i resource planning**
+2. **Potem skille wzmacniające role i workflow orchestration**
+3. **Dopiero później skille frontendowe, federacyjne i platformowe**
+
+Inaczej łatwo rozmyć przewagę projektu w stronę ogólnej platformy agentowej,
+gdzie upstream porusza się szybciej.
+
+---
+
 _Ostatnia aktualizacja: Luty 2026_

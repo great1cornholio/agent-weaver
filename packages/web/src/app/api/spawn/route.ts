@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { validateIdentifier } from "@/lib/validation";
+import { validateIdentifier, validateIssueIdentifier } from "@/lib/validation";
 import { getServices } from "@/lib/services";
 import { sessionToDashboard } from "@/lib/serialize";
 
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (body.issueId !== undefined && body.issueId !== null) {
-    const issueErr = validateIdentifier(body.issueId, "issueId");
+    const issueErr = validateIssueIdentifier(body.issueId, "issueId");
     if (issueErr) {
       return NextResponse.json({ error: issueErr }, { status: 400 });
     }

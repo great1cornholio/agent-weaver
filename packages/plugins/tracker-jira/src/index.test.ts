@@ -100,4 +100,30 @@ describe("tracker-jira plugin", () => {
         .rejects.toThrow("Jira plugin requires JIRA_HOST, JIRA_EMAIL, JIRA_API_TOKEN");
     });
   });
+
+  describe("generatePrompt()", () => {
+    it("returns neutral issue context by default", async () => {
+      const tracker = plugin.create();
+
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          fields: {
+            summary: "Playwright GUI coverage",
+            description: "Add browser coverage for checkout.",
+            status: { statusCategory: { key: "new" } },
+            assignee: { displayName: "Jane Doe" },
+            labels: ["mode:test-only"],
+          },
+        }),
+      });
+
+      const prompt = await tracker.generatePrompt("PROJ-101", mockProject);
+
+      expect(prompt).toContain("Jira issue PROJ-101");
+      expect(prompt).toContain("Playwright GUI coverage");
+      expect(prompt).toContain("follow the orchestrator instructions");
+      expect(prompt).not.toContain("Please implement");
+    });
+  });
 });

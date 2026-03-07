@@ -98,6 +98,9 @@ importers:
       '@composio/ao-plugin-tracker-gitlab':
         specifier: workspace:*
         version: link:../plugins/tracker-gitlab
+      '@composio/ao-plugin-tracker-jira':
+        specifier: workspace:*
+        version: link:../plugins/tracker-jira
       '@composio/ao-plugin-tracker-linear':
         specifier: workspace:*
         version: link:../plugins/tracker-linear
@@ -622,9 +625,18 @@ importers:
       '@composio/ao-plugin-scm-github':
         specifier: workspace:*
         version: link:../plugins/scm-github
+      '@composio/ao-plugin-scm-gitlab':
+        specifier: workspace:*
+        version: link:../plugins/scm-gitlab
       '@composio/ao-plugin-tracker-github':
         specifier: workspace:*
         version: link:../plugins/tracker-github
+      '@composio/ao-plugin-tracker-gitlab':
+        specifier: workspace:*
+        version: link:../plugins/tracker-gitlab
+      '@composio/ao-plugin-tracker-jira':
+        specifier: workspace:*
+        version: link:../plugins/tracker-jira
       '@composio/ao-plugin-tracker-linear':
         specifier: workspace:*
         version: link:../plugins/tracker-linear

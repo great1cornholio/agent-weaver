@@ -37,6 +37,7 @@ import {
   type PluginRegistry,
   type RuntimeHandle,
   type Issue,
+  type ExecutionMode,
   PR_STATE,
 } from "./types.js";
 import {
@@ -121,6 +122,45 @@ function validateStatus(raw: string | undefined): SessionStatus {
 }
 
 type WorkflowMode = "simple" | "full" | "auto";
+
+const DEFAULT_EXECUTION_MODE_LABELS = {
+  implement: ["mode:implement"],
+  test: ["mode:test", "mode:test-only"],
+} satisfies Record<ExecutionMode, string[]>;
+
+function resolveExecutionMode(project: ProjectConfig, issue?: Issue, override?: ExecutionMode): ExecutionMode {
+  if (override) {
+    return override;
+  }
+
+  const defaultMode = project.defaultExecutionMode ?? "implement";
+  if (!issue) {
+    return defaultMode;
+  }
+
+  const configuredLabels = project.executionModeLabels;
+  const implementLabels = new Set(
+    (configuredLabels?.implement ?? DEFAULT_EXECUTION_MODE_LABELS.implement).map((label) =>
+      label.trim().toLowerCase(),
+    ),
+  );
+  const testLabels = new Set(
+    (configuredLabels?.test ?? DEFAULT_EXECUTION_MODE_LABELS.test).map((label) =>
+      label.trim().toLowerCase(),
+    ),
+  );
+  const issueLabels = (issue.labels ?? []).map((label) => label.trim().toLowerCase());
+
+  if (issueLabels.some((label) => testLabels.has(label))) {
+    return "test";
+  }
+
+  if (issueLabels.some((label) => implementLabels.has(label))) {
+    return "implement";
+  }
+
+  return defaultMode;
+}
 
 function resolveWorkflowMode(project: ProjectConfig, issue?: Issue): "simple" | "full" {
   const configuredWorkflow = project.workflow ?? "simple";
@@ -540,7 +580,15 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       }
     }
 
-    const resolvedWorkflow = resolveWorkflowMode(project, resolvedIssue);
+    const resolvedExecutionMode = resolveExecutionMode(
+      project,
+      resolvedIssue,
+      spawnConfig.executionMode,
+    );
+    const resolvedAgentType =
+      spawnConfig.agentType ?? (resolvedExecutionMode === "test" ? "tester" : "developer");
+    const resolvedWorkflow =
+      resolvedExecutionMode === "test" ? "simple" : resolveWorkflowMode(project, resolvedIssue);
 
     // Generate prompt with validated issue
     let issueContext: string | undefined;
@@ -558,8 +606,9 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       projectId: spawnConfig.projectId,
       issueId: spawnConfig.issueId,
       issueContext,
+      executionMode: resolvedExecutionMode,
       userPrompt: spawnConfig.prompt,
-      agentType: spawnConfig.agentType ?? "developer",
+      agentType: resolvedAgentType,
     });
 
     const selectedAgentName =
@@ -576,6 +625,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       projectConfig: project,
       issueId: spawnConfig.issueId,
       prompt: composedPrompt ?? spawnConfig.prompt,
+      executionMode: resolvedExecutionMode,
       permissions: project.agentConfig?.permissions,
       model: project.agentConfig?.model,
     };
@@ -639,7 +689,9 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         tmuxName, // Store tmux name for mapping
         issue: spawnConfig.issueId,
         project: spawnConfig.projectId,
-        agent: plugins.agent.name, // Persist agent name for lifecycle manager
+        agent: selectedAgent.name, // Persist actual agent plugin name for lifecycle manager
+        agentType: resolvedAgentType,
+        executionMode: resolvedExecutionMode,
         createdAt: new Date().toISOString(),
         runtimeHandle: JSON.stringify(handle),
       });
@@ -656,6 +708,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
           issueId: spawnConfig.issueId ?? null,
           branch,
           workflow: resolvedWorkflow,
+          executionMode: resolvedExecutionMode,
+          agentType: resolvedAgentType,
           agent: selectedAgent.name,
         },
       });

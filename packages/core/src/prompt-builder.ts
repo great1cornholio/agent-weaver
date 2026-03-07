@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ProjectConfig } from "./types.js";
+import type { ExecutionMode, ProjectConfig } from "./types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -76,6 +76,9 @@ export interface PromptBuildConfig {
   /** Pre-fetched issue context from tracker.generatePrompt() */
   issueContext?: string;
 
+  /** Resolved execution mode derived from the ticket or caller override */
+  executionMode?: ExecutionMode;
+
   /** Explicit user prompt (appended last) */
   userPrompt?: string;
 
@@ -88,7 +91,7 @@ export interface PromptBuildConfig {
 // =============================================================================
 
 function buildConfigLayer(config: PromptBuildConfig): string {
-  const { project, projectId, issueId, issueContext } = config;
+  const { project, projectId, issueId, issueContext, executionMode } = config;
   const lines: string[] = [];
 
   lines.push("## Project Context");
@@ -98,6 +101,10 @@ function buildConfigLayer(config: PromptBuildConfig): string {
 
   if (project.tracker) {
     lines.push(`- Tracker: ${project.tracker.plugin}`);
+  }
+
+  if (executionMode) {
+    lines.push(`- Execution mode: ${executionMode}`);
   }
 
   if (issueId) {

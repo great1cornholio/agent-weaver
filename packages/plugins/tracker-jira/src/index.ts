@@ -114,7 +114,7 @@ export function create(): Tracker {
 
       const template = typeof project.tracker?.promptTemplate === "string"
         ? project.tracker.promptTemplate
-        : `Please work on Jira issue {id}
+        : `Jira issue {id}
 
 ## Goal
 {title}
@@ -123,6 +123,8 @@ export function create(): Tracker {
 {description}
 
 {link}
+
+Use this issue as task context and follow the orchestrator instructions.
 `;
 
       return template

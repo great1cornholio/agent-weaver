@@ -84,6 +84,13 @@ const AgentTypeConfigSchema = z.object({
   maxConcurrentPerHost: z.number().int().positive().optional(),
 });
 
+const ExecutionModeSchema = z.enum(["implement", "test"]);
+
+const ExecutionModeLabelsSchema = z.object({
+  implement: z.array(z.string()).optional(),
+  test: z.array(z.string()).optional(),
+});
+
 const ProjectConfigSchema = z.object({
   name: z.string().optional(),
   repo: z.string(),
@@ -102,6 +109,8 @@ const ProjectConfigSchema = z.object({
   postCreate: z.array(z.string()).optional(),
   agentConfig: AgentSpecificConfigSchema.default({}),
   workflow: z.enum(["simple", "full", "auto"]).default("simple"),
+  defaultExecutionMode: ExecutionModeSchema.default("implement"),
+  executionModeLabels: ExecutionModeLabelsSchema.optional(),
   tddMode: z.enum(["strict", "warn", "off"]).default("strict"),
   testCmd: z.string().optional(),
   reactions: z.record(ReactionConfigSchema.partial()).optional(),

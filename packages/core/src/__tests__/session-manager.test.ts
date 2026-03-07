@@ -411,6 +411,117 @@ describe("spawn", () => {
     expect(mockAgent.getLaunchCommand).not.toHaveBeenCalled();
   });
 
+  it("routes mode:test-only issues to tester prompts and simple workflow", async () => {
+    const autoConfig: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          workflow: "full",
+        },
+      },
+    };
+
+    const mockTracker: Tracker = {
+      name: "mock-tracker",
+      getIssue: vi.fn().mockResolvedValue({
+        id: "INT-200",
+        title: "Playwright coverage",
+        description: "Add GUI coverage for checkout flow.",
+        url: "https://tracker/issues/INT-200",
+        state: "open",
+        labels: ["mode:test-only", "playwright"],
+      }),
+      isCompleted: vi.fn().mockResolvedValue(false),
+      issueUrl: vi.fn().mockReturnValue("https://tracker/issues/INT-200"),
+      branchName: vi.fn().mockReturnValue("feat/INT-200"),
+      generatePrompt: vi.fn().mockResolvedValue("Ticket context for INT-200"),
+    };
+
+    const registryWithTracker: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string, name: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return name === "coordinator" ? mockCoordinatorAgent : mockAgent;
+        if (slot === "workspace") return mockWorkspace;
+        if (slot === "tracker") return mockTracker;
+        return null;
+      }),
+    };
+
+    const sm = createSessionManager({ config: autoConfig, registry: registryWithTracker });
+    await sm.spawn({ projectId: "my-app", issueId: "INT-200" });
+
+    expect(mockCoordinatorAgent.getLaunchCommand).not.toHaveBeenCalled();
+    expect(mockAgent.getLaunchCommand).toHaveBeenCalled();
+
+    const launchConfig = vi.mocked(mockAgent.getLaunchCommand).mock.calls.at(-1)?.[0];
+    expect(launchConfig?.executionMode).toBe("test");
+    expect(launchConfig?.prompt).toContain("Tester AI");
+    expect(launchConfig?.prompt).toContain("TESTS_DONE");
+
+    const meta = readMetadataRaw(sessionsDir, "app-1");
+    expect(meta?.["executionMode"]).toBe("test");
+    expect(meta?.["agentType"]).toBe("tester");
+
+    const logPath = getEventLogPath(configPath, join(tmpDir, "my-app"));
+    const lines = readFileSync(logPath, "utf-8").trim().split("\n");
+    const last = JSON.parse(lines[lines.length - 1] ?? "{}");
+    expect(last.data.workflow).toBe("simple");
+    expect(last.data.executionMode).toBe("test");
+    expect(last.data.agentType).toBe("tester");
+  });
+
+  it("supports custom execution mode labels", async () => {
+    const customConfig: OrchestratorConfig = {
+      ...config,
+      projects: {
+        ...config.projects,
+        "my-app": {
+          ...config.projects["my-app"],
+          executionModeLabels: {
+            test: ["qa"],
+          },
+        },
+      },
+    };
+
+    const mockTracker: Tracker = {
+      name: "mock-tracker",
+      getIssue: vi.fn().mockResolvedValue({
+        id: "INT-201",
+        title: "QA coverage",
+        description: "Exercise checkout in browser tests.",
+        url: "https://tracker/issues/INT-201",
+        state: "open",
+        labels: ["qa"],
+      }),
+      isCompleted: vi.fn().mockResolvedValue(false),
+      issueUrl: vi.fn().mockReturnValue("https://tracker/issues/INT-201"),
+      branchName: vi.fn().mockReturnValue("feat/INT-201"),
+      generatePrompt: vi.fn().mockResolvedValue("Ticket context for INT-201"),
+    };
+
+    const registryWithTracker: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return mockAgent;
+        if (slot === "workspace") return mockWorkspace;
+        if (slot === "tracker") return mockTracker;
+        return null;
+      }),
+    };
+
+    const sm = createSessionManager({ config: customConfig, registry: registryWithTracker });
+    await sm.spawn({ projectId: "my-app", issueId: "INT-201" });
+
+    const launchConfig = vi.mocked(mockAgent.getLaunchCommand).mock.calls.at(-1)?.[0];
+    expect(launchConfig?.executionMode).toBe("test");
+    expect(launchConfig?.prompt).toContain("Tester AI");
+  });
+
   it("emits pipeline events and clears checkpoint in workflow full", async () => {
     const fullConfig: OrchestratorConfig = {
       ...config,

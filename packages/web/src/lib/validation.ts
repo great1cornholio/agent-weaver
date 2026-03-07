@@ -33,6 +33,20 @@ export function validateIdentifier(
   return null;
 }
 
+/** Validate tracker issue identifiers (allows GitLab-style #42). */
+export function validateIssueIdentifier(
+  value: unknown,
+  fieldName: string,
+  maxLength = 128,
+): string | null {
+  const strErr = validateString(value, fieldName, maxLength);
+  if (strErr) return strErr;
+  if (!/^#?[a-zA-Z0-9_-]+$/.test(value as string)) {
+    return `${fieldName} must match #?[a-zA-Z0-9_-]+`;
+  }
+  return null;
+}
+
 /**
  * Strip control characters (U+0000–U+001F, U+007F–U+009F) from a string.
  * Critical for messages that may be passed to shell-based runtimes (tmux send-keys, etc.)

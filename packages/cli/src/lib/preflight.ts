@@ -68,6 +68,14 @@ function requiredEnvironment(
     });
   }
 
+  if (options.issueProvided && project.tracker?.plugin === "jira") {
+    requirements.push({
+      check: "tracker.jira.auth",
+      requiredAnyOf: ["JIRA_API_TOKEN"],
+      fix: "Set JIRA_API_TOKEN and configure JIRA_HOST/JIRA_EMAIL in the project tracker or environment before spawning with a Jira issue.",
+    });
+  }
+
   return requirements;
 }
 

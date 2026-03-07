@@ -266,6 +266,21 @@ describe("API Routes", () => {
       const data = await res.json();
       expect(data.session.issueId).toBeNull();
     });
+
+    it("accepts GitLab-style issue identifiers", async () => {
+      const req = makeRequest("/api/spawn", {
+        method: "POST",
+        body: JSON.stringify({ projectId: "my-app", issueId: "#42" }),
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const res = await spawnPOST(req);
+      expect(res.status).toBe(201);
+      expect(mockSessionManager.spawn).toHaveBeenCalledWith({
+        projectId: "my-app",
+        issueId: "#42",
+      });
+    });
   });
 
   // ── POST /api/sessions/:id/send ────────────────────────────────────

@@ -367,10 +367,7 @@ function createLinearTracker(query: GraphQLTransport): Tracker {
         lines.push("## Description", "", issue.description);
       }
 
-      lines.push(
-        "",
-        "Please implement the changes described in this ticket. When done, commit and push your changes.",
-      );
+      lines.push("", "Use this ticket as task context and follow the orchestrator instructions.");
 
       return lines.join("\n");
     },

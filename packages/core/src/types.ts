@@ -179,6 +179,14 @@ export interface SessionSpawnConfig {
   /** Override the agent plugin for this session (e.g. "codex", "claude-code") */
   agent?: string;
   agentType?: string;
+  executionMode?: ExecutionMode;
+}
+
+export type ExecutionMode = "implement" | "test";
+
+export interface ExecutionModeLabelConfig {
+  implement?: string[];
+  test?: string[];
 }
 
 /** Config for creating an orchestrator session */
@@ -337,6 +345,7 @@ export interface AgentLaunchConfig {
   projectConfig: ProjectConfig;
   issueId?: string;
   prompt?: string;
+  executionMode?: ExecutionMode;
   permissions?: "skip" | "default";
   model?: string;
   /**
@@ -948,6 +957,12 @@ export interface ProjectConfig {
   /** Workflow mode for orchestrating task execution */
   workflow?: "simple" | "full" | "auto";
 
+  /** Default execution mode when an issue does not specify one via labels */
+  defaultExecutionMode?: ExecutionMode;
+
+  /** Label mapping used to derive execution mode from tracker issues */
+  executionModeLabels?: ExecutionModeLabelConfig;
+
   /** TDD enforcement mode used by pipeline orchestration */
   tddMode?: "strict" | "warn" | "off";
 
@@ -1057,6 +1072,8 @@ export interface SessionMetadata {
   runtimeHandle?: string;
   restoredAt?: string;
   role?: string; // "orchestrator" for orchestrator sessions
+  executionMode?: ExecutionMode;
+  agentType?: string;
   dashboardPort?: number;
   terminalWsPort?: number;
   directTerminalWsPort?: number;

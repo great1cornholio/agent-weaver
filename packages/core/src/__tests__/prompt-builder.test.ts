@@ -200,6 +200,31 @@ describe("buildPrompt", () => {
     expect(result).toContain("ci-failed");
     expect(result).not.toContain("approved-and-green");
   });
+
+  it("includes execution mode in context", () => {
+    const result = buildPrompt({
+      project,
+      projectId: "test-app",
+      issueId: "INT-100",
+      executionMode: "test",
+    });
+
+    expect(result).toContain("Execution mode: test");
+  });
+
+  it("loads tester prompt when tester agent type is selected", () => {
+    const result = buildPrompt({
+      project,
+      projectId: "test-app",
+      issueId: "INT-100",
+      executionMode: "test",
+      agentType: "tester",
+    });
+
+    expect(result).toContain("Tester AI");
+    expect(result).toContain("TESTS_DONE");
+    expect(result).not.toContain(BASE_AGENT_PROMPT);
+  });
 });
 
 describe("BASE_AGENT_PROMPT", () => {

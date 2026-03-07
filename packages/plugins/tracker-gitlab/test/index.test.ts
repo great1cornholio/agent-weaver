@@ -184,6 +184,8 @@ describe("tracker-gitlab plugin", () => {
       expect(prompt).toContain(tracker.issueUrl("42", project));
       expect(prompt).toContain("backend, api");
       expect(prompt).toContain("Add GET /health returning {status: ok}");
+      expect(prompt).toContain("follow the orchestrator instructions");
+      expect(prompt).not.toContain("Please implement the changes");
     });
   });
 

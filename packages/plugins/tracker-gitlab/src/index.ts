@@ -141,10 +141,7 @@ function createGitLabTracker(): Tracker {
         lines.push("## Description", "", issue.description);
       }
 
-      lines.push(
-        "",
-        "Please implement the changes described in this issue. When done, commit and push your changes.",
-      );
+      lines.push("", "Use this issue as task context and follow the orchestrator instructions.");
 
       return lines.join("\n");
     },
