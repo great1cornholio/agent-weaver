@@ -49,7 +49,7 @@ id_rsa
 id_dsa
 id_ecdsa
 id_ed25519
-*.ppk
+*.ppkmnie 
 
 # Development symlinks (created per-worktree, not committed)
 .claude
