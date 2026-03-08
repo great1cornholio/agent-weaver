@@ -426,6 +426,14 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
           if (detected.timestamp && detected.timestamp > session.lastActivityAt) {
             session.lastActivityAt = detected.timestamp;
           }
+
+          if (session.status === "spawning") {
+            if (detected.state === "waiting_input") {
+              session.status = "needs_input";
+            } else if (detected.state !== "exited") {
+              session.status = "working";
+            }
+          }
         }
       } catch {
         // Can't detect activity — keep existing value

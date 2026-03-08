@@ -1196,6 +1196,38 @@ describe("list", () => {
     expect(sessions[0].activity).toBe("active");
   });
 
+  it("promotes spawning sessions to working when activity is detected", async () => {
+    const agentWithState: Agent = {
+      ...mockAgent,
+      getActivityState: vi.fn().mockResolvedValue({ state: "active" }),
+    };
+    const registryWithState: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return agentWithState;
+        return null;
+      }),
+    };
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "a",
+      status: "spawning",
+      project: "my-app",
+      runtimeHandle: JSON.stringify(makeHandle("rt-1")),
+    });
+
+    const sm = createSessionManager({
+      config,
+      registry: registryWithState,
+    });
+    const sessions = await sm.list();
+
+    expect(sessions[0].activity).toBe("active");
+    expect(sessions[0].status).toBe("working");
+  });
+
   it("keeps existing activity when getActivityState throws", async () => {
     const agentWithError: Agent = {
       ...mockAgent,
@@ -1390,6 +1422,36 @@ describe("get", () => {
     expect(agentWithState.getActivityState).toHaveBeenCalled();
     // Verify activity state was set
     expect(session!.activity).toBe("idle");
+  });
+
+  it("promotes spawning session to working in get() when activity is detected", async () => {
+    const agentWithState: Agent = {
+      ...mockAgent,
+      getActivityState: vi.fn().mockResolvedValue({ state: "active" }),
+    };
+    const registryWithState: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return agentWithState;
+        return null;
+      }),
+    };
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "spawning",
+      project: "my-app",
+      runtimeHandle: JSON.stringify(makeHandle("rt-1")),
+    });
+
+    const sm = createSessionManager({ config, registry: registryWithState });
+    const session = await sm.get("app-1");
+
+    expect(session).not.toBeNull();
+    expect(session!.activity).toBe("active");
+    expect(session!.status).toBe("working");
   });
 
   it("returns null for nonexistent session", async () => {
